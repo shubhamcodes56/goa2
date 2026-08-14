@@ -28,8 +28,8 @@ ENV FASTEMBED_CACHE_PATH=/app/fastembed_cache
 # Pre-download the FastEmbed model into the Docker image so it doesn't download on every cloud boot
 RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', threads=1)"
 
-# Expose port 7860 (Hugging Face Spaces default)
-EXPOSE 7860
+# Expose port (Render automatically provides PORT env variable, defaulting to 8000 here)
+EXPOSE 8000
 
-# Start Uvicorn server on port 7860
-CMD ["sh", "-c", "uvicorn rag_api:app --host 0.0.0.0 --port ${PORT:-7860}"]
+# Start Uvicorn server, using the PORT environment variable that cloud hosts inject
+CMD ["sh", "-c", "uvicorn rag_api:app --host 0.0.0.0 --port ${PORT:-8000}"]

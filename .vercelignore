@@ -1,0 +1,6 @@
+qdrant_db.zip
+qdrant_db/
+local_qdrant_db/
+__pycache__/
+*.ipynb
+*.pdf

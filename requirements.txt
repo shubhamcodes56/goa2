@@ -1,11 +1,5 @@
 fastapi
 uvicorn
-fastembed
 qdrant-client
-duckdb
-huggingface_hub
-pandas
-nltk
-requests
 pydantic
-httpx[http2]
+requests
