@@ -1,7 +1,11 @@
-datasets
-sentence-transformers
-qdrant-client
-nltk
 fastapi
 uvicorn
+sentence-transformers
+qdrant-client
+duckdb
+huggingface_hub
+pandas
+nltk
+requests
 pydantic
+httpx[http2]
