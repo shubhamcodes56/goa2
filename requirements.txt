@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-sentence-transformers
+fastembed
 qdrant-client
 duckdb
 huggingface_hub

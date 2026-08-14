@@ -18,11 +18,11 @@ import hashlib
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 from qdrant_client import AsyncQdrantClient
 import httpx
 import asyncio
@@ -75,14 +75,14 @@ response_cache = LRUCache(max_size=500)
 embedding_cache = OrderedDict()
 EMBEDDING_CACHE_SIZE = 200
 
-def get_cached_embedding(query: str, model: SentenceTransformer) -> list:
+def get_cached_embedding(query: str, model: TextEmbedding) -> list:
     """Cache embeddings to avoid re-encoding repeated queries."""
     key = query.strip().lower()
     if key in embedding_cache:
         embedding_cache.move_to_end(key)
         return embedding_cache[key]
     
-    vector = model.encode(key).tolist()
+    vector = list(model.embed([key]))[0].tolist()
     embedding_cache[key] = vector
     embedding_cache.move_to_end(key)
     if len(embedding_cache) > EMBEDDING_CACHE_SIZE:
@@ -90,7 +90,7 @@ def get_cached_embedding(query: str, model: SentenceTransformer) -> list:
     return vector
 
 # ─── Global State ──────────────────────────────────────────
-model: SentenceTransformer | None = None
+embedding_model: TextEmbedding | None = None
 qdrant: AsyncQdrantClient | None = None
 groq_http: httpx.AsyncClient | None = None  # LAYER 3: Persistent connection pool
 
@@ -104,13 +104,11 @@ SYSTEM_PROMPT_TEMPLATE = (
 # ─── Lifespan (Startup/Shutdown) ───────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global model, qdrant, groq_http
+    global embedding_model, qdrant, groq_http
     
-    # Load embedding model with optimized threads
-    import torch
-    torch.set_num_threads(8)
+    # Initialize Embedding Model using FastEmbed (ONNX, ultra-low memory)
     log.info("Loading embedding model: %s", EMBEDDING_MODEL)
-    model = SentenceTransformer(EMBEDDING_MODEL)
+    embedding_model = TextEmbedding(model_name=EMBEDDING_MODEL)
     
     # LAYER 3: Persistent HTTP connection pool to Groq
     groq_http = httpx.AsyncClient(
@@ -138,7 +136,7 @@ async def lifespan(app: FastAPI):
     log.info("Pre-warming connections...")
     try:
         # Warm Qdrant connection
-        dummy_vector = model.encode("warmup").tolist()
+        dummy_vector = list(embedding_model.embed(["warmup"]))[0].tolist()
         await qdrant.query_points(
             collection_name=COLLECTION_NAME,
             query=dummy_vector,
@@ -196,7 +194,7 @@ async def ask(req: AskRequest):
     """
     start_time = time.perf_counter()
     
-    if not model or not qdrant or not groq_http:
+    if not embedding_model or not qdrant or not groq_http:
         raise HTTPException(status_code=503, detail="Models not loaded yet")
 
     # ─── LAYER 1: Full Response Cache Check ────────────────
@@ -208,7 +206,7 @@ async def ask(req: AskRequest):
 
     # ─── LAYER 2: Cached Embedding ─────────────────────────
     t0 = time.perf_counter()
-    vector_list = await asyncio.to_thread(get_cached_embedding, req.query, model)
+    vector_list = await asyncio.to_thread(get_cached_embedding, req.query, embedding_model)
     embed_ms = (time.perf_counter() - t0) * 1000
     
     # ─── STEP 1: Qdrant Cloud Search (LAYER 5: top_k=1) ───

@@ -16,16 +16,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements
 COPY requirements.txt .
 
-# Install dependencies, ensuring we have PyTorch CPU version to save massive space/RAM
-# and httpx[http2] for the persistent connection pool
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy our ultra-optimized backend script
 COPY rag_api.py .
 
-# Pre-download the HuggingFace model into the Docker image so it doesn't download on every cloud boot
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"
+# Pre-download the FastEmbed model into the Docker image so it doesn't download on every cloud boot
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"
 
 # Expose port (Render automatically provides PORT env variable, defaulting to 8000 here)
 EXPOSE 8000
