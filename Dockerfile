@@ -22,8 +22,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy our ultra-optimized backend script
 COPY rag_api.py .
 
+# Define explicit cache path so it gets baked into the Docker image, regardless of user
+ENV FASTEMBED_CACHE_PATH=/app/fastembed_cache
+
 # Pre-download the FastEmbed model into the Docker image so it doesn't download on every cloud boot
-RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', threads=1)"
 
 # Expose port (Render automatically provides PORT env variable, defaulting to 8000 here)
 EXPOSE 8000

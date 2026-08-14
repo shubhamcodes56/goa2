@@ -108,7 +108,7 @@ async def lifespan(app: FastAPI):
     
     # Initialize Embedding Model using FastEmbed (ONNX, ultra-low memory)
     log.info("Loading embedding model: %s", EMBEDDING_MODEL)
-    embedding_model = TextEmbedding(model_name=EMBEDDING_MODEL)
+    embedding_model = TextEmbedding(model_name=EMBEDDING_MODEL, threads=1)
     
     # LAYER 3: Persistent HTTP connection pool to Groq
     groq_http = httpx.AsyncClient(
