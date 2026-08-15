@@ -51,18 +51,19 @@ class LRUCache:
         self._cache = OrderedDict()
         self._max_size = max_size
 
-    def _key(self, query: str) -> str:
-        return hashlib.md5(query.strip().lower().encode()).hexdigest()
+    def _key(self, query: str, mode: str) -> str:
+        key_str = f"{query.strip().lower()}_{mode}"
+        return hashlib.md5(key_str.encode()).hexdigest()
 
-    def get(self, query: str):
-        key = self._key(query)
+    def get(self, query: str, mode: str):
+        key = self._key(query, mode)
         if key in self._cache:
             self._cache.move_to_end(key)
             return self._cache[key]
         return None
 
-    def put(self, query: str, answer: str):
-        key = self._key(query)
+    def put(self, query: str, mode: str, answer: str):
+        key = self._key(query, mode)
         self._cache[key] = answer
         self._cache.move_to_end(key)
         if len(self._cache) > self._max_size:
@@ -104,12 +105,21 @@ def get_embedding_sync(query: str) -> list:
 qdrant: AsyncQdrantClient | None = None
 
 # ─── Compact System Prompt ─────────────────────────────────
-SYSTEM_PROMPT_TEMPLATE = (
+SYSTEM_PROMPT_STRICT = (
     "You are a highly intelligent and advanced Voice Assistant. Follow these rules STRICTLY:\n"
     "1. DEFAULT TO ENGLISH: You must reply in English by default. ONLY reply in another language if the user's input is undeniably and entirely in that other language. Do NOT announce what language you are using.\n"
     "2. CONCISE CONVERSATIONAL ANSWERS: Since your output is spoken by a Voice AI, keep your answers SHORT, natural, and to the point (1-3 sentences maximum). DO NOT give long essays or large text blocks unless the user explicitly asks for a detailed explanation.\n"
     "3. NO HINGLISH & NO FORMATTING: Never mix languages. Never use markdown formatting (no asterisks, hashes, bullet points). Use plain conversational text only.\n"
-    "4. KNOWLEDGE: Use the provided context to answer. If the context doesn't contain the answer, use your advanced intelligence to provide an accurate, concise response.\n\n"
+    "4. STRICT KNOWLEDGE: You MUST ONLY answer based on the provided CONTEXT. If the context does not contain the answer, you MUST decline to answer gracefully and state a clear reason (e.g., 'I do not have this information in my database' or 'My knowledge is restricted on this topic'). Do NOT use your general knowledge under any circumstances.\n\n"
+    "CONTEXT:\n{context}"
+)
+
+SYSTEM_PROMPT_FULL = (
+    "You are a highly intelligent and advanced Voice Assistant. Follow these rules STRICTLY:\n"
+    "1. DEFAULT TO ENGLISH: You must reply in English by default. ONLY reply in another language if the user's input is undeniably and entirely in that other language. Do NOT announce what language you are using.\n"
+    "2. CONCISE CONVERSATIONAL ANSWERS: Since your output is spoken by a Voice AI, keep your answers SHORT, natural, and to the point (1-3 sentences maximum). DO NOT give long essays or large text blocks unless the user explicitly asks for a detailed explanation.\n"
+    "3. NO HINGLISH & NO FORMATTING: Never mix languages. Never use markdown formatting (no asterisks, hashes, bullet points). Use plain conversational text only.\n"
+    "4. HYBRID KNOWLEDGE: Use the provided context to answer. If the context doesn't contain the answer, you are free to use your advanced general intelligence to provide an accurate, concise response.\n\n"
     "CONTEXT:\n{context}"
 )
 
@@ -147,6 +157,7 @@ app.add_middleware(
 class AskRequest(BaseModel):
     query: str = Field(..., description="The user's question")
     top_k: int = Field(default=3, description="Number of context chunks")
+    mode: str = Field(default="strict", description="Mode: 'strict' (dataset only) or 'full' (LLM knowledge fallback)")
 
 
 @app.post("/ask")
@@ -160,7 +171,7 @@ async def ask(req: AskRequest):
 
     try:
         # LAYER 1: Cache check
-        cached = response_cache.get(req.query)
+        cached = response_cache.get(req.query, req.mode)
         if cached:
             latency = (time.perf_counter() - start_time) * 1000
             log.info(f"CACHE HIT! Latency: {latency:.1f}ms")
@@ -186,7 +197,8 @@ async def ask(req: AskRequest):
         return PlainTextResponse(f"Error: {e}\n\nTraceback: {traceback.format_exc()}", status_code=500)
 
     # Groq LLM streaming
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=combined_context)
+    prompt_template = SYSTEM_PROMPT_FULL if req.mode == "full" else SYSTEM_PROMPT_STRICT
+    system_prompt = prompt_template.format(context=combined_context)
 
     def generate_stream():
         full_answer = []
@@ -228,7 +240,7 @@ async def ask(req: AskRequest):
 
         final_answer = "".join(full_answer)
         if final_answer:
-            response_cache.put(req.query, final_answer)
+            response_cache.put(req.query, req.mode, final_answer)
 
         total_ms = (time.perf_counter() - start_time) * 1000
         log.info(
