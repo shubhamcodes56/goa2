@@ -1,0 +1,47 @@
+[
+  {
+    "query": "temperature and weather",
+    "server_latency_ms": 910.1609999779612,
+    "total_request_ms": 2997.8954792022705,
+    "num_results": 3,
+    "top_result_language": "hi",
+    "top_result_score": 0.7848208314931457,
+    "status": "SLOW"
+  },
+  {
+    "query": "Who is the president of India?",
+    "server_latency_ms": 823.6339000286534,
+    "total_request_ms": 2873.1203079223633,
+    "num_results": 3,
+    "top_result_language": "en",
+    "top_result_score": 0.6589241980951874,
+    "status": "SLOW"
+  },
+  {
+    "query": "भारत की राजधानी क्या है?",
+    "server_latency_ms": 913.624000037089,
+    "total_request_ms": 2955.207109451294,
+    "num_results": 3,
+    "top_result_language": "hi",
+    "top_result_score": 0.5757167038762641,
+    "status": "SLOW"
+  },
+  {
+    "query": "Amsterdam",
+    "server_latency_ms": 776.0190999833867,
+    "total_request_ms": 2833.937406539917,
+    "num_results": 2,
+    "top_result_language": "en",
+    "top_result_score": 0.5801841138786088,
+    "status": "SLOW"
+  },
+  {
+    "query": "solar system planets",
+    "server_latency_ms": 750.0332000199705,
+    "total_request_ms": 2803.3053874969482,
+    "num_results": 3,
+    "top_result_language": "hi",
+    "top_result_score": 0.7930102940866665,
+    "status": "SLOW"
+  }
+]

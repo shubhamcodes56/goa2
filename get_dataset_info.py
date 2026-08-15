@@ -1,8 +1,14 @@
-from datasets import load_dataset_builder
+import duckdb
+HF_TOKEN = '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'
 
-builder = load_dataset_builder("ai4bharat/MSMARCO-XI")
-print(f"Dataset Name: {builder.info.builder_name}")
-print(f"Description: {builder.info.description}")
-print(f"Splits:")
-for split_name, split_info in builder.info.splits.items():
-    print(f" - {split_name}: {split_info.num_examples} examples (rows)")
+try:
+    con = duckdb.connect()
+    con.execute(f"INSTALL httpfs;")
+    con.execute(f"LOAD httpfs;")
+    # Set HF token
+    con.execute(f"SET s3_region='us-east-1';")
+    print("Checking row count...")
+    res = con.execute(f"SELECT count(*) FROM 'hf://datasets/ai4bharat/MSMARCO-XI/train/hintrain.parquet'").fetchone()
+    print(f"Total rows in hintrain.parquet: {res[0]}")
+except Exception as e:
+    print(e)

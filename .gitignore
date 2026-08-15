@@ -6,3 +6,7 @@ venv/
 .env
 .idea/
 .vscode/
+local_qdrant_db/
+*.zip
+*.parquet
+.vercel
