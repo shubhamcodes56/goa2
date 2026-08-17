@@ -8,6 +8,11 @@ file descriptor exhaustion (Errno 16).
 
 import time
 import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 import json 
 import logging
 import traceback
@@ -87,6 +92,8 @@ def get_embedding_sync(query: str) -> list:
     headers = {"Content-Type": "application/json"}
     if HF_TOKEN:
         headers["Authorization"] = f"Bearer {HF_TOKEN}"
+    else:
+        return [0.0] * 384
 
     resp = _session.post(HF_API_URL, json={"inputs": [key]}, headers=headers, timeout=15.0)
     if resp.status_code != 200:
@@ -227,6 +234,8 @@ async def ask(req: AskRequest):
                 timeout=30.0,
                 stream=True,
             )
+            if groq_resp.status_code != 200:
+                raise Exception(f"Groq API Error {groq_resp.status_code}: {groq_resp.text}")
             for raw_line in groq_resp.iter_lines():
                 if raw_line:
                     line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
