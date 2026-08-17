@@ -242,12 +242,17 @@ async def ask(req: AskRequest):
                     if line.startswith("data: ") and line != "data: [DONE]":
                         try:
                             data = json.loads(line[6:])
-                            content = data["choices"][0]["delta"].get("content", "")
-                            if content:
-                                full_answer.append(content)
-                                yield f"data: {json.dumps({'answer': content})}\n\n"
-                        except (json.JSONDecodeError, KeyError, IndexError):
-                            pass
+                            if "error" in data:
+                                yield f"data: {json.dumps({'error': str(data['error'])})}\n\n"
+                            
+                            if "choices" in data and len(data["choices"]) > 0:
+                                delta = data["choices"][0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    full_answer.append(content)
+                                    yield f"data: {json.dumps({'answer': content})}\n\n"
+                        except (json.JSONDecodeError, KeyError, IndexError) as e:
+                            yield f"data: {json.dumps({'error': f'Parse error: {str(e)} on line: {line}'})}\n\n"
             groq_resp.close()
             yield "data: [DONE]\n\n"
         except Exception as e:
