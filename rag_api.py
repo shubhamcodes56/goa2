@@ -285,7 +285,7 @@ async def ask(req: AskRequest):
             f"Total: {total_ms:.0f}ms"
         )
 
-    return StreamingResponse(
+    response = StreamingResponse(
         generate_stream(), 
         media_type="text/event-stream",
         headers={
@@ -294,6 +294,14 @@ async def ask(req: AskRequest):
             "Connection": "keep-alive"
         }
     )
+    
+    # CRITICAL HACK: Cloudflare will buffer the response (causing TTFB to jump to 1.5s+) 
+    # if the Content-Type is not EXACTLY "text/event-stream".
+    # FastAPI's StreamingResponse automatically appends "; charset=utf-8" to the Content-Type.
+    # We must explicitly override it to prevent Cloudflare from buffering.
+    response.headers["Content-Type"] = "text/event-stream"
+    
+    return response
 
 
 @app.get("/health")
