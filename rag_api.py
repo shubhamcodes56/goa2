@@ -253,6 +253,8 @@ async def ask(req: AskRequest):
                                     yield f"data: {json.dumps({'answer': content})}\n\n"
                         except (json.JSONDecodeError, KeyError, IndexError) as e:
                             yield f"data: {json.dumps({'error': f'Parse error: {str(e)} on line: {line}'})}\n\n"
+                    elif not line.startswith("data: ") and line.strip():
+                        yield f"data: {json.dumps({'error': f'Unexpected non-SSE line: {line}'})}\n\n"
             groq_resp.close()
             yield "data: [DONE]\n\n"
         except Exception as e:
