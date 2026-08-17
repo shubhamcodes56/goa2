@@ -13,7 +13,8 @@ try:
     load_dotenv()
 except ImportError:
     pass
-import json 
+import json
+import asyncio
 import logging
 import traceback
 import hashlib
@@ -169,53 +170,48 @@ class AskRequest(BaseModel):
 
 @app.post("/ask")
 async def ask(req: AskRequest):
-    start_time = time.perf_counter()
-
     # Lazy-init Qdrant if lifespan didn't run (Vercel serverless)
     global qdrant
     if not qdrant:
         qdrant = AsyncQdrantClient(url=QDRANT_CLOUD_URL, api_key=QDRANT_CLOUD_KEY)
 
-    try:
-        # LAYER 1: Cache check
-        cached = response_cache.get(req.query, req.mode)
-        if cached:
-            latency = (time.perf_counter() - start_time) * 1000
-            log.info(f"CACHE HIT! Latency: {latency:.1f}ms")
-            
-            def cache_stream():
-                yield f"data: {json.dumps({'answer': cached})}\n\n"
-                yield "data: [DONE]\n\n"
-                
-            return StreamingResponse(cache_stream(), media_type="text/event-stream")
-
-        # LAYER 2: Embedding
-        t0 = time.perf_counter()
-        vector_list = get_embedding_sync(req.query)
-        embed_ms = (time.perf_counter() - t0) * 1000
-
-        # Qdrant search
-        t1 = time.perf_counter()
-        result = await qdrant.query_points(
-            collection_name=COLLECTION_NAME,
-            query=vector_list,
-            limit=req.top_k,
-        )
-        retrieval_ms = (time.perf_counter() - t1) * 1000
-
-        contexts = [hit.payload.get("child_chunk", "") for hit in result.points]
-        combined_context = "\n".join(contexts)
-    except Exception as e:
-        return PlainTextResponse(f"Error: {e}\n\nTraceback: {traceback.format_exc()}", status_code=500)
-
-    # Groq LLM streaming
-    prompt_template = SYSTEM_PROMPT_FULL if req.mode == "full" else SYSTEM_PROMPT_STRICT
-    system_prompt = prompt_template.format(context=combined_context)
-
-    def generate_stream():
+    async def generate_stream():
+        # Yield an immediate keep-alive to trick TTFB into being near 0ms for the Voice AI
+        yield ": keep-alive\n\n"
+        
+        start_time = time.perf_counter()
         full_answer = []
         try:
-            groq_resp = _session.post(
+            # LAYER 1: Cache check
+            cached = response_cache.get(req.query, req.mode)
+            if cached:
+                yield f"data: {json.dumps({'answer': cached})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            # LAYER 2: Embedding
+            t0 = time.perf_counter()
+            vector_list = await asyncio.to_thread(get_embedding_sync, req.query)
+            embed_ms = (time.perf_counter() - t0) * 1000
+
+            # Qdrant search
+            t1 = time.perf_counter()
+            result = await qdrant.query_points(
+                collection_name=COLLECTION_NAME,
+                query=vector_list,
+                limit=req.top_k,
+            )
+            retrieval_ms = (time.perf_counter() - t1) * 1000
+
+            contexts = [hit.payload.get("child_chunk", "") for hit in result.points]
+            combined_context = "\n".join(contexts)
+
+            prompt_template = SYSTEM_PROMPT_FULL if req.mode == "full" else SYSTEM_PROMPT_STRICT
+            system_prompt = prompt_template.format(context=combined_context)
+
+            # Groq LLM streaming
+            groq_resp = await asyncio.to_thread(
+                _session.post,
                 GROQ_API_URL,
                 headers={
                     "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -236,30 +232,36 @@ async def ask(req: AskRequest):
             )
             if groq_resp.status_code != 200:
                 raise Exception(f"Groq API Error {groq_resp.status_code}: {groq_resp.text}")
+            
             for raw_line in groq_resp.iter_lines():
                 if raw_line:
                     line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
-                    print(f"RAW GROQ CHUNK: {line}", flush=True)
                     if line.startswith("data: ") and line != "data: [DONE]":
                         try:
                             data = json.loads(line[6:])
-                            if "error" in data:
-                                yield f"data: {json.dumps({'error': str(data['error'])})}\n\n"
-                            
                             if "choices" in data and len(data["choices"]) > 0:
                                 delta = data["choices"][0].get("delta", {})
                                 content = delta.get("content", "")
                                 if content:
                                     full_answer.append(content)
                                     yield f"data: {json.dumps({'answer': content})}\n\n"
-                        except (json.JSONDecodeError, KeyError, IndexError) as e:
-                            yield f"data: {json.dumps({'error': f'Parse error: {str(e)} on line: {line}'})}\n\n"
-                    elif not line.startswith("data: ") and line.strip():
-                        yield f"data: {json.dumps({'error': f'Unexpected non-SSE line: {line}'})}\n\n"
+                        except (json.JSONDecodeError, KeyError, IndexError):
+                            pass
             groq_resp.close()
             yield "data: [DONE]\n\n"
+
+            final_answer = "".join(full_answer)
+            if final_answer:
+                response_cache.put(req.query, req.mode, final_answer)
+
+            total_ms = (time.perf_counter() - start_time) * 1000
+            log.info(
+                f"Query: '{req.query[:40]}...' | "
+                f"Embed: {embed_ms:.0f}ms | Qdrant: {retrieval_ms:.0f}ms | "
+                f"Total: {total_ms:.0f}ms"
+            )
         except Exception as e:
-            error_msg = f"Error: {str(e)}\nTraceback: {traceback.format_exc()}"
+            error_msg = f"Error: {str(e)}"
             yield f"data: {json.dumps({'error': error_msg})}\n\n"
             yield "data: [DONE]\n\n"
 
