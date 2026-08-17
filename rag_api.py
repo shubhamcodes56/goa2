@@ -175,7 +175,12 @@ async def ask(req: AskRequest):
         if cached:
             latency = (time.perf_counter() - start_time) * 1000
             log.info(f"CACHE HIT! Latency: {latency:.1f}ms")
-            return PlainTextResponse(cached)
+            
+            def cache_stream():
+                yield f"data: {json.dumps({'answer': cached})}\n\n"
+                yield "data: [DONE]\n\n"
+                
+            return StreamingResponse(cache_stream(), media_type="text/event-stream")
 
         # LAYER 2: Embedding
         t0 = time.perf_counter()
@@ -231,12 +236,15 @@ async def ask(req: AskRequest):
                             content = data["choices"][0]["delta"].get("content", "")
                             if content:
                                 full_answer.append(content)
-                                yield content
+                                yield f"data: {json.dumps({'answer': content})}\n\n"
                         except (json.JSONDecodeError, KeyError, IndexError):
                             pass
             groq_resp.close()
+            yield "data: [DONE]\n\n"
         except Exception as e:
-            yield f"Error: {str(e)}\nTraceback: {traceback.format_exc()}"
+            error_msg = f"Error: {str(e)}\nTraceback: {traceback.format_exc()}"
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+            yield "data: [DONE]\n\n"
 
         final_answer = "".join(full_answer)
         if final_answer:
