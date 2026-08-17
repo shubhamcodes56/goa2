@@ -176,8 +176,8 @@ async def ask(req: AskRequest):
         qdrant = AsyncQdrantClient(url=QDRANT_CLOUD_URL, api_key=QDRANT_CLOUD_KEY)
 
     async def generate_stream():
-        # Yield an immediate keep-alive with 2KB padding to force Render/nginx to flush the buffer
-        yield f": {'keep-alive ' * 200}\n\n"
+        # Yield an immediate keep-alive with 8KB padding to force ALL proxies to flush the buffer
+        yield f": {'keep-alive ' * 800}\n\n"
         
         # TRICK FOR TTFT (Time To First Token) < 200ms:
         # Yield an empty string token IMMEDIATELY. Voice AIs and latency testers 
@@ -281,7 +281,15 @@ async def ask(req: AskRequest):
             f"Total: {total_ms:.0f}ms"
         )
 
-    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate_stream(), 
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive"
+        }
+    )
 
 
 @app.get("/health")
