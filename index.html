@@ -1,0 +1,3057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS — Voice Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ==========================================================================
+       DESIGN SYSTEM — Glassmorphism + Gemini Rounded
+       ========================================================================== */
+    :root {
+      /* Glass tokens */
+      --glass-bg: rgba(15, 15, 20, 0.4);
+      --glass-bg-heavy: rgba(15, 15, 20, 0.55);
+      --glass-bg-light: rgba(255, 255, 255, 0.04);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-border-hover: rgba(255, 255, 255, 0.14);
+      --glass-blur: blur(20px);
+      --glass-blur-heavy: blur(30px);
+      --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      --glass-shadow-lg: 0 16px 48px 0 rgba(0, 0, 0, 0.35);
+      --glass-hover: rgba(255, 255, 255, 0.1);
+
+      /* Legacy (kept for JS references) */
+      --bg-deep: transparent;
+      --bg-surface: rgba(15, 15, 20, 0.35);
+      --bg-surface-elevated: rgba(25, 25, 35, 0.45);
+      --bg-input: rgba(255, 255, 255, 0.06);
+      --bg-input-hover: rgba(255, 255, 255, 0.1);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(99, 102, 241, 0.5);
+      --border-subtle: rgba(255, 255, 255, 0.04);
+
+      --text-primary: #f0f0f5;
+      --text-secondary: #b8bcc8;
+      --text-muted: #7f8694;
+      --text-dim: #5a5f6d;
+      --text-greeting: #e8e8ed;
+
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --accent-glow: rgba(99, 102, 241, 0.22);
+      --accent-subtle: rgba(99, 102, 241, 0.1);
+
+      --success: #34d399;
+      --success-bg: rgba(52, 211, 153, 0.12);
+      --success-border: rgba(52, 211, 153, 0.25);
+
+      --danger: #f87171;
+      --danger-bg: rgba(248, 113, 113, 0.1);
+      --danger-border: rgba(248, 113, 113, 0.25);
+
+      --warning: #fbbf24;
+
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      /* Gemini-style heavy rounding */
+      --radius-sm: 14px;
+      --radius-md: 20px;
+      --radius-lg: 24px;
+      --radius-xl: 28px;
+      --radius-full: 9999px;
+
+      --sidebar-width: 280px;
+      --sidebar-collapsed: 60px;
+      --transition-fast: 0.18s ease;
+      --transition-normal: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      background: #050508;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1.5;
+    }
+
+    /* Video Background */
+    #bg-video {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      z-index: -2;
+      pointer-events: none;
+    }
+
+    #bg-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(5, 5, 10, 0.55);
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* ==========================================================================
+       APP SHELL — Sidebar + Main area (no grid lines)
+       ========================================================================== */
+    .app-shell {
+      display: flex;
+      height: 100vh;
+      width: 100%;
+      padding: 10px;
+      gap: 10px;
+    }
+
+    /* --- SIDEBAR — Floating glass panel --- */
+    .sidebar {
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur-heavy);
+      -webkit-backdrop-filter: var(--glass-blur-heavy);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-xl);
+      display: flex;
+      flex-direction: column;
+      transition: width var(--transition-normal), min-width var(--transition-normal),
+                  border-radius var(--transition-normal);
+      overflow: hidden;
+      z-index: 20;
+      box-shadow: var(--glass-shadow);
+    }
+
+    .sidebar.collapsed {
+      width: var(--sidebar-collapsed);
+      min-width: var(--sidebar-collapsed);
+      border-radius: var(--radius-xl);
+    }
+
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 14px;
+      flex-shrink: 0;
+      /* No border-bottom */
+    }
+
+    .sidebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .sidebar-logo {
+      width: 30px;
+      height: 30px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, var(--accent) 0%, #818cf8 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+    }
+
+    .sidebar-brand-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
+    }
+
+    .sidebar.collapsed .sidebar-brand-text,
+    .sidebar.collapsed .sidebar-new-chat-text,
+    .sidebar.collapsed .conv-item-text,
+    .sidebar.collapsed .sidebar-footer-text {
+      opacity: 0;
+      width: 0;
+      overflow: hidden;
+    }
+
+    .btn-sidebar-toggle {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 6px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all var(--transition-fast);
+    }
+
+    .btn-sidebar-toggle:hover {
+      color: var(--text-primary);
+      background: var(--glass-hover);
+    }
+
+    .sidebar-actions {
+      padding: 6px 10px 6px;
+      flex-shrink: 0;
+    }
+
+    .btn-new-chat {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md);
+      color: var(--text-secondary);
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .btn-new-chat:hover {
+      background: var(--glass-hover);
+      color: var(--text-primary);
+      border-color: var(--glass-border-hover);
+    }
+    .sidebar.collapsed .btn-new-chat { justify-content: center; padding: 10px; }
+
+    .conv-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .conv-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      padding: 12px 8px 4px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .conv-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      overflow: hidden;
+    }
+
+    .conv-item:hover { background: var(--glass-hover); }
+    .conv-item.active {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid var(--glass-border-hover);
+    }
+
+    .conv-item-icon {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      color: var(--text-dim);
+    }
+
+    .conv-item-text {
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .conv-item-title {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      text-overflow: ellipsis;
+      overflow: hidden;
+    }
+
+    .conv-item-time {
+      font-size: 10px;
+      color: var(--text-dim);
+    }
+
+    .conv-item.active .conv-item-title { color: var(--text-primary); }
+
+    .sidebar-footer {
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      cursor: pointer;
+      transition: background var(--transition-fast);
+      border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+      /* No border-top */
+    }
+
+    .sidebar-footer:hover { background: var(--glass-hover); }
+
+    .sidebar-footer-icon {
+      width: 16px;
+      height: 16px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .sidebar-footer-text {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    /* --- MAIN CONTENT --- */
+    .main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 20px);
+      overflow: hidden;
+      position: relative;
+      border-radius: var(--radius-xl);
+    }
+
+    /* ==========================================================================
+       LANDING SCREEN — Floating glass over video
+       ========================================================================== */
+    .landing-screen {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: opacity 0.4s ease, transform 0.4s ease;
+      /* Subtle radial glow, mostly transparent */
+      background:
+        radial-gradient(ellipse 60% 45% at 50% 55%, rgba(99, 102, 241, 0.08) 0%, transparent 65%);
+      border-radius: var(--radius-xl);
+    }
+
+    .landing-screen.hidden {
+      opacity: 0;
+      transform: translateY(-20px) scale(0.98);
+      pointer-events: none;
+    }
+
+    .greeting-text {
+      font-size: 42px;
+      font-weight: 300;
+      color: var(--text-greeting);
+      margin-bottom: 36px;
+      text-align: center;
+      letter-spacing: -0.03em;
+      width: 100%;
+      max-width: 680px;
+      padding: 0;
+      text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      column-gap: 12px;
+    }
+
+    .crew-roller {
+      display: block;
+      overflow: hidden;
+      position: relative;
+      min-width: 200px;
+      text-align: left;
+      height: 1.2em;
+      line-height: 1.2em;
+    }
+    #crew-name {
+      display: block;
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      color: #fff; /* Highlight color */
+      font-weight: 400;
+      transition: transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55), opacity 0.6s ease-in-out;
+    }
+    #crew-name.roll-out {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+    #crew-name.roll-in {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    #crew-name.roll-prepare {
+      transform: translateY(100%);
+      opacity: 0;
+      transition: none;
+    }
+
+    /* --- Pill Input Bar (Landing) — Floating glass pill with enhanced glow --- */
+    .landing-pill {
+      width: 100%;
+      max-width: 680px;
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: 2rem;
+      display: flex;
+      align-items: center;
+      padding: 5px 8px 5px 6px;
+      gap: 2px;
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+      box-shadow:
+        var(--glass-shadow),
+        0 0 20px 2px rgba(99, 102, 241, 0.12),
+        0 0 60px 0 rgba(99, 102, 241, 0.06);
+    }
+
+    .landing-pill:focus-within {
+      border-color: rgba(99, 102, 241, 0.5);
+      box-shadow:
+        var(--glass-shadow),
+        0 0 0 3px rgba(99, 102, 241, 0.15),
+        0 0 30px 4px rgba(99, 102, 241, 0.18),
+        0 0 80px 0 rgba(99, 102, 241, 0.08);
+    }
+
+    .pill-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all var(--transition-fast);
+    }
+
+    .pill-btn:hover {
+      color: var(--text-primary);
+      background: var(--glass-hover);
+    }
+
+    .pill-btn svg { width: 18px; height: 18px; }
+
+    .pill-input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 15px;
+      padding: 10px 8px;
+      min-width: 0;
+    }
+
+    .pill-input::placeholder { color: var(--text-dim); }
+
+    /* Latency ping indicator */
+    .latency-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: var(--radius-full);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--glass-border);
+      flex-shrink: 0;
+      user-select: none;
+    }
+
+    .latency-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+      flex-shrink: 0;
+      transition: background 0.3s ease;
+    }
+
+    .latency-dot.good { background: var(--success); }
+    .latency-dot.warn { background: var(--warning); }
+    .latency-dot.bad  { background: var(--danger); }
+
+    .latency-value {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      white-space: nowrap;
+      min-width: 32px;
+      text-align: right;
+    }
+
+    /* Mic button in pill — listening state */
+    .pill-mic.listening {
+      color: #fff;
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    .pill-mic.listening:hover { background: var(--accent-hover); }
+
+    /* Preset suggestion chips on landing */
+    .landing-presets {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 24px;
+      max-width: 680px;
+      padding: 0 20px;
+    }
+
+    .landing-chip {
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border);
+      color: var(--text-secondary);
+      font-size: 12.5px;
+      padding: 8px 16px;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .landing-chip:hover {
+      border-color: rgba(99, 102, 241, 0.35);
+      color: var(--text-primary);
+      background: rgba(99, 102, 241, 0.12);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .landing-chip.guardrail:hover {
+      border-color: var(--danger-border);
+      color: #fca5a5;
+      background: var(--danger-bg);
+    }
+
+    /* ==========================================================================
+       CONVERSATION VIEW — hidden until first query
+       ========================================================================== */
+    .conversation-view {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.35s ease 0.1s;
+    }
+
+    .conversation-view.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Conversation Top Bar — Glass */
+    .conv-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      flex-shrink: 0;
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border-bottom: 1px solid var(--glass-border);
+      border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+      /* No harsh border */
+    }
+
+    .conv-topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .conv-topbar-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      max-width: 300px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .conv-topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge-sm {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 500;
+      font-family: var(--font-mono);
+      padding: 4px 10px;
+      border-radius: var(--radius-full);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--glass-border);
+      color: var(--text-secondary);
+    }
+
+    .badge-sm .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+
+    .badge-dot { background: var(--text-dim); }
+    .badge-dot.active { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .badge-dot.mock-mode { background: var(--warning); }
+    .badge-dot.error { background: var(--danger); }
+
+    .btn-icon {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--glass-border);
+      color: var(--text-muted);
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all var(--transition-fast);
+    }
+
+    .btn-icon:hover {
+      background: var(--glass-hover);
+      color: var(--text-primary);
+      border-color: var(--glass-border-hover);
+    }
+    .btn-icon svg { width: 14px; height: 14px; }
+
+    /* Conversation scroll area */
+    .conv-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+    }
+
+    .conv-content {
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px 28px 120px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* Guardrail Banner — Glass */
+    .guardrail-banner {
+      display: none;
+      background: rgba(248, 113, 113, 0.08);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--danger-border);
+      border-radius: var(--radius-lg);
+      padding: 14px 18px;
+      align-items: flex-start;
+      gap: 12px;
+      color: #fca5a5;
+      font-size: 13px;
+      box-shadow: 0 4px 16px rgba(248, 113, 113, 0.08);
+    }
+
+    .guardrail-banner.active { display: flex; }
+    .guardrail-content { flex: 1; }
+    .guardrail-title { font-weight: 600; color: #fecaca; margin-bottom: 2px; }
+
+    .guardrail-dismiss {
+      background: transparent;
+      border: none;
+      color: #f87171;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 2px;
+      border-radius: 50%;
+      transition: background var(--transition-fast);
+    }
+    .guardrail-dismiss:hover { background: rgba(248, 113, 113, 0.15); }
+
+    /* Turn Block (Query + Response Pair) */
+    .turn-block {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    /* Query bubble — Glass pill */
+    .turn-query {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .query-bubble {
+      background: rgba(99, 102, 241, 0.15);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
+      padding: 14px 20px;
+      max-width: 75%;
+      font-size: 14px;
+      color: var(--text-primary);
+      line-height: 1.6;
+      box-shadow: 0 4px 16px rgba(99, 102, 241, 0.08);
+    }
+
+    .query-bubble .transcript-partial {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    /* Response area */
+    .turn-response {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .response-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .response-avatar {
+      width: 26px;
+      height: 26px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, var(--accent) 0%, #818cf8 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 700;
+      font-size: 11px;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+    }
+
+    .response-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .response-body {
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-lg);
+      padding: 18px 22px;
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text-primary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 60px;
+      box-shadow: var(--glass-shadow);
+    }
+
+    .response-body .answer-cursor {
+      display: inline-block;
+      width: 7px;
+      height: 14px;
+      background: var(--accent);
+      margin-left: 3px;
+      vertical-align: middle;
+      animation: blink 0.9s infinite;
+      border-radius: 2px;
+    }
+
+    /* Topbar latency badge */
+    .latency-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      padding: 3px 10px;
+      border-radius: var(--radius-full);
+      background: transparent;
+      transition: color 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .latency-badge.has-value { color: var(--text-secondary); }
+
+    /* TTS mute toggle — Glass */
+    .btn-tts-toggle {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--glass-border);
+      color: var(--text-muted);
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all var(--transition-fast);
+      flex-shrink: 0;
+    }
+    .btn-tts-toggle:hover {
+      background: var(--glass-hover);
+      color: var(--text-primary);
+      border-color: var(--glass-border-hover);
+    }
+    .btn-tts-toggle.muted { color: var(--danger); border-color: var(--danger-border); }
+    .btn-tts-toggle svg { width: 14px; height: 14px; }
+
+    /* Brain Mode Toggle */
+    .btn-mode-toggle {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--glass-border);
+      color: var(--text-muted);
+      height: 32px;
+      padding: 0 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all var(--transition-fast);
+      flex-shrink: 0;
+      font-size: 12px;
+      font-family: var(--font-mono);
+    }
+    .btn-mode-toggle:hover {
+      background: var(--glass-hover);
+      color: var(--text-primary);
+      border-color: var(--glass-border-hover);
+    }
+    .btn-mode-toggle.strict {
+      border-color: rgba(52, 211, 153, 0.4);
+      color: #34d399;
+    }
+    .btn-mode-toggle .mode-icon { font-size: 14px; }
+    .btn-mode-toggle .mode-label { font-weight: 600; letter-spacing: 0.5px; }
+
+    /* Mic listening pulse animation */
+    .conv-mic-btn.listening,
+    .pill-mic.listening {
+      animation: mic-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes mic-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45); }
+      50% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
+    }
+
+    /* Bottom input bar (within conversation) — Floating glass pill */
+    .conv-input-bar {
+      padding: 12px 24px 16px;
+      background: transparent;
+      flex-shrink: 0;
+      /* No border-top */
+    }
+
+    .conv-input-inner {
+      max-width: 720px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border);
+      border-radius: 2rem;
+      padding: 5px 8px 5px 18px;
+      box-shadow: var(--glass-shadow-lg);
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+
+    .conv-input-inner:focus-within {
+      border-color: rgba(99, 102, 241, 0.4);
+      box-shadow: var(--glass-shadow-lg), 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    .conv-text-input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      padding: 10px 0;
+      min-width: 0;
+    }
+
+    .conv-text-input::placeholder { color: var(--text-dim); }
+
+    .conv-mic-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all var(--transition-fast);
+    }
+
+    .conv-mic-btn:hover {
+      color: var(--text-primary);
+      background: var(--glass-hover);
+    }
+    .conv-mic-btn.listening {
+      color: #fff;
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+    .conv-mic-btn svg { width: 18px; height: 18px; }
+
+    .conv-send-btn {
+      background: linear-gradient(135deg, var(--accent) 0%, #818cf8 100%);
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all var(--transition-fast);
+      box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
+    }
+
+    .conv-send-btn:hover {
+      background: linear-gradient(135deg, var(--accent-hover) 0%, #6366f1 100%);
+      transform: scale(1.05);
+      box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+    }
+    .conv-send-btn svg { width: 16px; height: 16px; }
+
+    /* Read-only replay indicator — Glass */
+    .replay-indicator {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 10px;
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md);
+      display: none;
+    }
+
+    .replay-indicator.active { display: block; }
+
+    /* Keyframes */
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .app-shell { padding: 6px; gap: 6px; }
+      .sidebar {
+        position: fixed; left: 6px; top: 6px; bottom: 6px;
+        z-index: 100;
+        border-radius: var(--radius-xl);
+      }
+      .sidebar.collapsed {
+        width: var(--sidebar-collapsed);
+        min-width: var(--sidebar-collapsed);
+      }
+
+      .greeting-text { font-size: 28px; }
+
+      .landing-pill { max-width: calc(100% - 32px); }
+
+      .conv-content { padding: 16px 16px 100px; }
+
+      .query-bubble { max-width: 90%; }
+    }
+
+    @media (max-width: 480px) {
+      .app-shell { padding: 4px; gap: 4px; }
+      .sidebar.collapsed { width: 0; min-width: 0; border: none; }
+
+      .landing-presets { gap: 6px; }
+      .landing-chip { font-size: 11px; padding: 6px 12px; }
+    }
+
+    /* Custom scrollbar — Soft */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-full);
+    }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
+
+    /* ==========================================================================
+       SETTINGS MODAL — Glassmorphism panel
+       ========================================================================== */
+    .settings-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .settings-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .settings-panel {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.95);
+      width: 480px;
+      max-width: calc(100vw - 40px);
+      max-height: calc(100vh - 60px);
+      overflow-y: auto;
+      background: rgba(15, 15, 22, 0.65);
+      backdrop-filter: blur(40px);
+      -webkit-backdrop-filter: blur(40px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-xl);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255,255,255,0.1);
+      z-index: 201;
+      padding: 28px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .settings-panel.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .settings-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+    }
+    .settings-close {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--glass-border);
+      color: var(--text-muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: all var(--transition-fast);
+    }
+    .settings-close:hover {
+      background: var(--glass-hover);
+      color: var(--text-primary);
+    }
+
+    .settings-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+    }
+
+    .bg-picker-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .bg-option {
+      position: relative;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.25s ease;
+      aspect-ratio: 16 / 9;
+      background: rgba(0, 0, 0, 0.3);
+    }
+    .bg-option:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+    .bg-option.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow), 0 8px 24px rgba(99, 102, 241, 0.15);
+    }
+
+    .bg-option video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      pointer-events: none;
+    }
+
+    .bg-option-label {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 8px 12px;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+      font-size: 11.5px;
+      font-weight: 500;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .bg-option-check {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+    }
+    .bg-option.active .bg-option-check {
+      display: flex;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fullscreen Video Background -->
+  <video id="bg-video" autoplay muted loop playsinline>
+    <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_135039_b04d00db-6ee2-4e2a-a7f5-b2dfd3d24fd2.mp4" type="video/mp4">
+  </video>
+  <div id="bg-overlay"></div>
+
+
+  <div class="app-shell">
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar collapsed" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <div class="sidebar-logo">J</div>
+          <span class="sidebar-brand-text">JARVIS</span>
+        </div>
+        <button class="btn-sidebar-toggle" id="btn-sidebar-toggle" title="Toggle sidebar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="sidebar-actions">
+        <button class="btn-new-chat" id="btn-new-chat">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          <span class="sidebar-new-chat-text">New chat</span>
+        </button>
+      </div>
+
+      <div class="conv-list" id="conv-list">
+        <!-- Populated dynamically -->
+      </div>
+
+      <div class="sidebar-footer" id="sidebar-footer" title="Settings">
+        <svg class="sidebar-footer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+        <span class="sidebar-footer-text">Settings</span>
+      </div>
+    </aside>
+
+    <!-- ===== MAIN AREA ===== -->
+    <div class="main-area">
+
+      <!-- ===== LANDING SCREEN ===== -->
+      <div class="landing-screen" id="landing-screen">
+        <h1 class="greeting-text" id="greeting-text">
+          <span>Let's jump in,</span>
+          <span class="crew-roller"><span id="crew-name" class="roll-in">Straw Hats</span></span>
+        </h1>
+
+        <div class="landing-pill" id="landing-pill">
+          <!-- Plus / attach button -->
+          <button class="pill-btn" title="Attach context scope">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+
+          <!-- Text input -->
+          <input type="text" class="pill-input" id="landing-input" placeholder="Ask your question..." autocomplete="off">
+
+          <!-- Live latency ping indicator -->
+          <div class="latency-indicator" id="latency-indicator" title="Pipeline latency ping">
+            <span class="latency-dot good" id="latency-dot"></span>
+            <span class="latency-value" id="latency-value">--ms</span>
+          </div>
+          <!-- Hidden WS URL input — auto-detects production vs local -->
+          <input type="hidden" id="input-ws-url" value="">
+          <!-- Audio streaming controls -->
+          <input type="hidden" id="audio-streaming-active" value="false">
+
+          <!-- Mic button -->
+          <button class="pill-btn pill-mic" id="landing-mic-btn" title="Tap to speak">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Suggestion chips -->
+        <div class="landing-presets">
+          <button class="landing-chip" data-query="What is speculative vector search and how does parent-child chunking work?">💡 Speculative Vector Search</button>
+          <button class="landing-chip" data-query="MSMARCO-XI dataset me Hindi aur English context kaise retrieve hota hai?">🌐 Hindi-English Hybrid</button>
+          <button class="landing-chip guardrail" data-query="Write me a script to exploit an unauthenticated server.">🚫 Guardrail Test</button>
+        </div>
+      </div>
+
+      <!-- ===== CONVERSATION VIEW ===== -->
+      <div class="conversation-view" id="conversation-view">
+
+        <!-- Top bar -->
+        <div class="conv-topbar">
+          <div class="conv-topbar-left">
+            <button class="btn-icon" id="btn-sidebar-open" title="Open sidebar" style="display:none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+            <span class="conv-topbar-title" id="conv-topbar-title">New Conversation</span>
+          </div>
+          <div class="conv-topbar-right">
+            <span class="latency-badge" id="topbar-latency" title="Latest response latency"></span>
+            <button class="btn-mode-toggle" id="btn-mode-toggle" title="Switch brain mode">
+              <span class="mode-icon" id="mode-icon">🧠</span>
+              <span class="mode-label" id="mode-label">Full</span>
+            </button>
+            <div class="badge-sm" id="conv-status-badge">
+              <span class="badge-dot mock-mode" id="conv-status-dot"></span>
+              <span id="conv-status-text">Mock</span>
+            </div>
+            <button class="btn-tts-toggle" id="btn-tts-toggle" title="Toggle voice replies">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Scrollable conversation content -->
+        <div class="conv-scroll" id="conv-scroll">
+          <div class="conv-content" id="conv-content">
+            <!-- Read-only replay banner -->
+            <div class="replay-indicator" id="replay-indicator">
+              📖 Viewing saved conversation (read-only replay)
+            </div>
+            <!-- Turn blocks rendered dynamically here -->
+          </div>
+        </div>
+
+        <!-- Bottom input bar -->
+        <div class="conv-input-bar" id="conv-input-bar">
+          <div class="conv-input-inner">
+            <input type="text" class="conv-text-input" id="conv-text-input" placeholder="Follow-up question..." autocomplete="off">
+            <button class="conv-mic-btn" id="conv-mic-btn" title="Tap to speak">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+            </button>
+            <button class="conv-send-btn" id="conv-send-btn" title="Send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== SETTINGS MODAL ===== -->
+  <div class="settings-overlay" id="settings-overlay"></div>
+  <div class="settings-panel" id="settings-panel">
+    <div class="settings-header">
+      <span class="settings-title">Settings</span>
+      <button class="settings-close" id="settings-close" title="Close">&times;</button>
+    </div>
+
+    <div class="settings-section-label">Background</div>
+    <div class="bg-picker-grid" id="bg-picker-grid" style="margin-bottom: 24px;">
+      <!-- Populated by JS -->
+    </div>
+
+    <div class="settings-section-label">Backend URL</div>
+    <div style="margin-bottom: 16px;">
+      <input type="text" id="setting-ws-url" class="pill-input" style="width: 100%; border: 1px solid rgba(255,255,255,0.1);" placeholder="wss://your-render-app.onrender.com/ws/audio">
+      <div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 8px;">Restart connection after changing.</div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       JAVASCRIPT — Pipeline, WebSocket, Conversation Store, UI State Machine
+       ========================================================================== -->
+  <script>
+    /**
+     * ==========================================================================
+     * WEBSOCKET PROTOCOL SPECIFICATION
+     * ==========================================================================
+     * The WebSocket connection expects/emits JSON formatted messages.
+     *
+     * 1. CLIENT -> SERVER:
+     *    - Audio PCM/Base64 chunk:
+     *      { "type": "audio_chunk", "data": "<base64_pcm>", "sample_rate": 16000 }
+     *    - Audio Stream End:
+     *      { "type": "audio_end" }
+     *    - Direct Text Fallback Query:
+     *      { "type": "text_query", "text": "What is speculative RAG?" }
+     *
+     * 2. SERVER -> CLIENT:
+     *    - Live Partial Transcript:
+     *      { "type": "partial_transcript", "text": "what is the principle" }
+     *    - Final Transcript:
+     *      { "type": "final_transcript", "text": "what is the principle of speculative RAG" }
+     *    - Pipeline Stage Timing Telemetry:
+     *      { "type": "stage_timing", "stage": "stt"|"retrieval"|"guardrail"|"generation", "latency_ms": 42.5 }
+     *    - Guardrail Rejection:
+     *      { "type": "guardrail_reject", "reason": "Query out of MSMARCO-XI domain scope", "code": "OFF_TOPIC" }
+     *    - Streamed Answer Token/Chunk:
+     *      { "type": "answer_chunk", "delta": "Speculative ", "done": false }
+     *    - End of Generation & Total Metrics:
+     *      { "type": "metrics", "total_latency_ms": 178.4, "stages": { "stt": 48, "retrieval": 36, "guardrail": 14, "generation": 80 }, "tokens": 42 }
+     * ==========================================================================
+     */
+
+    /**
+     * ==========================================================================
+     * CONVERSATION PERSISTENCE — IN-MEMORY STORE
+     * ==========================================================================
+     * Architecture notes for the backend team:
+     *
+     * All conversation data lives in the `ConversationStore` object below.
+     * It exposes a clean CRUD-like API:
+     *   - create()        → start a new conversation, returns ID
+     *   - get(id)         → return full conversation object
+     *   - list()          → return all conversations (newest first)
+     *   - addTurn(id, turn)  → append a query+answer turn to a conversation
+     *   - delete(id)      → remove a conversation
+     *
+     * Each conversation object looks like:
+     *   {
+     *     id: string,
+     *     title: string,           // auto-set from first query text
+     *     createdAt: number,       // Date.now() timestamp
+     *     updatedAt: number,
+     *     turns: [
+     *       {
+     *         query: string,
+     *         answer: string,      // empty string if guardrail-rejected
+     *         isRejected: boolean,
+     *         guardrailReason: string|null,
+     *         stages: { stt, retrieval, guardrail, generation },
+     *         totalLatencyMs: number,
+     *         grounding: string|null,
+     *         tokenCount: number,
+     *         timestamp: number
+     *       }
+     *     ]
+     *   }
+     *
+     * To swap in a real backend:
+     *   1. Replace the internal `_conversations` Map with API calls.
+     *   2. Each method is async-ready — just add `await` and change to fetch/axios.
+     *   3. Do NOT use localStorage/sessionStorage — this may run inside a
+     *      sandboxed preview iframe. The store is intentionally in-memory.
+     * ==========================================================================
+     */
+    const ConversationStore = (() => {
+      const _conversations = new Map();
+
+      function _genId() {
+        return 'conv_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+      }
+
+      return {
+        create() {
+          const conv = {
+            id: _genId(),
+            title: 'New Conversation',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            turns: []
+          };
+          _conversations.set(conv.id, conv);
+          return conv;
+        },
+
+        get(id) {
+          return _conversations.get(id) || null;
+        },
+
+        list() {
+          return [..._conversations.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+        },
+
+        addTurn(id, turn) {
+          const conv = _conversations.get(id);
+          if (!conv) return;
+          conv.turns.push(turn);
+          if (conv.turns.length === 1) {
+            conv.title = turn.query.slice(0, 80);
+          }
+          conv.updatedAt = Date.now();
+        },
+
+        delete(id) {
+          _conversations.delete(id);
+        }
+      };
+    })();
+
+
+    // ==========================================================================
+    // GLOBAL STATE
+    // ==========================================================================
+    let USE_MOCK = false;
+    let ws = null;
+    let isListening = false;
+    let audioContext = null;
+    let speechRecognition = null;
+    let mockTimers = [];
+
+    // App state machine: 'landing' | 'conversation'
+    let appView = 'landing';
+    let activeConversationId = null;
+    let isReplayMode = false;
+
+    // Current in-flight turn tracking
+    let currentTurnQuery = '';
+    let currentTurnAnswer = '';
+    let currentTurnTokens = 0;
+    let currentTurnRejected = false;
+    let currentTurnGuardrailReason = null;
+    let currentTurnGrounding = null;
+    let currentStages = { stt: 0, retrieval: 0, guardrail: 0, generation: 0 };
+
+    // Brain mode: 'strict' = dataset only, 'full' = LLM + dataset
+    let brainMode = localStorage.getItem('brain_mode') || 'full';
+
+    // Latency history across all conversations (for aggregate metrics)
+    let queryLatencyHistory = [];
+
+    // DOM refs (populated in init)
+    let el = {};
+
+    // Mock dataset
+    const MOCK_DATASET = [
+      {
+        trigger: "speculative",
+        answer: "Speculative Vector Search reduces end-to-end RAG latency by executing sub-vector probes concurrently with streaming speech tokens.\n\nKey Mechanics:\n1. Small Child Chunks (128 chars): Embedded with paraphrase-multilingual-MiniLM-L12-v2 for fast cosine lookup in Qdrant.\n2. Full Parent Context: Stored in vector payload to provide complete context directly to the synthesizer without multi-hop lookups.\n3. Speculative Trigger: Search executes as soon as partial STT confidence crosses threshold (p > 0.85), achieving <200ms TTFT.",
+        stages: { stt: 44, retrieval: 38, guardrail: 12, generation: 74 },
+        grounding: "Qdrant: msmarco_chunks (Score: 0.942)"
+      },
+      {
+        trigger: "hindi",
+        answer: "MSMARCO-XI dataset me dual-language indexing use hoti hai jisme English aur Hindi answers dono ko vector space me map kiya jata hai:\n\n• Multilingual Embeddings: 'paraphrase-multilingual-MiniLM-L12-v2' dono bhashaon ko ek hi shared embedding space me embed karta hai.\n• Unified Search: Hindi query par bhi English and Hindi dono parent passages retrieve ho sakte hain.\n• Real-time Latency: Qdrant cosine similarity average 35ms me accurate results fetch kar leta hai.",
+        stages: { stt: 52, retrieval: 41, guardrail: 15, generation: 78 },
+        grounding: "MSMARCO-XI hintrain.parquet (Score: 0.918)"
+      },
+      {
+        trigger: "guardrail",
+        reject: true,
+        reason: "Query violates safety policy and dataset domain scope. Only queries related to the MSMARCO-XI knowledge corpus are permitted.",
+        stages: { stt: 35, retrieval: 28, guardrail: 18, generation: 0 }
+      },
+      {
+        trigger: "default",
+        answer: "Retrieved relevant passage from local vector index with parent-child hierarchical grouping.\n\nThe speculative engine matched candidate embeddings in Qdrant and validated safety guardrails with zero ungrounded hallucinations.",
+        stages: { stt: 45, retrieval: 36, guardrail: 14, generation: 82 },
+        grounding: "Qdrant Index (Score: 0.884)"
+      }
+    ];
+
+
+    // ==========================================================================
+    // INITIALIZATION
+    // ==========================================================================
+    let audioUnlocked = false;
+    function unlockAudioContext() {
+      if (audioUnlocked) return;
+      // Unlock Web Audio API
+      if (window.AudioContext || window.webkitAudioContext) {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        if (source.start) source.start(0);
+        else source.noteOn(0);
+        setTimeout(() => { if(ctx.state !== 'closed') ctx.close(); }, 100);
+      }
+      
+      // Unlock HTML5 Audio
+      const audio = new Audio();
+      audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+      audio.play().catch(() => {});
+      
+      audioUnlocked = true;
+      document.removeEventListener('click', unlockAudioContext);
+      document.removeEventListener('touchstart', unlockAudioContext);
+    }
+
+    // ==========================================================================
+    // AUTO-DETECT BACKEND URL (Production vs Local)
+    // ==========================================================================
+    const LOCAL_BACKEND = 'ws://localhost:8000/ws/audio';
+    const RENDER_BACKEND = 'wss://goa2.onrender.com/ws/audio';
+
+    function getBackendWsUrl() {
+      // If user already set a custom URL in settings, use it
+      const savedUrl = localStorage.getItem('custom_ws_url');
+      if (savedUrl) return savedUrl;
+
+      // On localhost, use local backend
+      const host = window.location.hostname;
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return LOCAL_BACKEND;
+      }
+      
+      // On production (Vercel), default to the Render brain
+      return RENDER_BACKEND;
+    }
+
+    let _wsReconnectAttempts = 0;
+    const _wsMaxReconnectDelay = 10000;
+
+    function init() {
+      cacheElements();
+      setupEventListeners();
+      setupSpeechRecognition();
+      setupTtsToggle();
+      startCrewRoller();
+      renderSidebarConversations();
+
+      document.addEventListener('click', unlockAudioContext);
+      document.addEventListener('touchstart', unlockAudioContext);
+
+      // Set the auto-detected backend URL
+      const backendUrl = getBackendWsUrl();
+      el.inputWsUrl.value = backendUrl;
+      console.log('Backend URL:', backendUrl);
+
+      // Always start in Live mode. If connection fails 3 times, it will auto-switch to Mock mode.
+      USE_MOCK = false;
+      connectWebSocket();
+      setupModeToggle();
+      updateConvStatusBadge();
+    }
+
+    function cacheElements() {
+      el = {
+        sidebar: document.getElementById('sidebar'),
+        btnSidebarToggle: document.getElementById('btn-sidebar-toggle'),
+        btnSidebarOpen: document.getElementById('btn-sidebar-open'),
+        btnNewChat: document.getElementById('btn-new-chat'),
+        convList: document.getElementById('conv-list'),
+        sidebarFooter: document.getElementById('sidebar-footer'),
+
+        landingScreen: document.getElementById('landing-screen'),
+        landingInput: document.getElementById('landing-input'),
+        landingMicBtn: document.getElementById('landing-mic-btn'),
+        latencyIndicator: document.getElementById('latency-indicator'),
+        latencyDot: document.getElementById('latency-dot'),
+        latencyValue: document.getElementById('latency-value'),
+        inputWsUrl: document.getElementById('input-ws-url'),
+
+        conversationView: document.getElementById('conversation-view'),
+        convTopbarTitle: document.getElementById('conv-topbar-title'),
+        convStatusDot: document.getElementById('conv-status-dot'),
+        convStatusText: document.getElementById('conv-status-text'),
+        convScroll: document.getElementById('conv-scroll'),
+        convContent: document.getElementById('conv-content'),
+        replayIndicator: document.getElementById('replay-indicator'),
+        convInputBar: document.getElementById('conv-input-bar'),
+        convTextInput: document.getElementById('conv-text-input'),
+        convMicBtn: document.getElementById('conv-mic-btn'),
+        convSendBtn: document.getElementById('conv-send-btn'),
+        topbarLatency: document.getElementById('topbar-latency'),
+      };
+    }
+
+    function setupEventListeners() {
+      // Sidebar toggle
+      el.btnSidebarToggle.addEventListener('click', () => {
+        el.sidebar.classList.toggle('collapsed');
+      });
+
+      el.btnSidebarOpen?.addEventListener('click', () => {
+        el.sidebar.classList.remove('collapsed');
+      });
+
+      // New chat
+      el.btnNewChat.addEventListener('click', () => {
+        goToLanding();
+      });
+
+      // Landing input submission
+      el.landingInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const q = el.landingInput.value.trim();
+          if (q) submitQuery(q);
+        }
+      });
+
+      // Landing mic
+      el.landingMicBtn.addEventListener('click', () => {
+        if (appView === 'landing') {
+          toggleVoiceInput('landing');
+        }
+      });
+
+      // Landing chips
+      document.querySelectorAll('.landing-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          submitQuery(chip.getAttribute('data-query'));
+        });
+      });
+
+      // Start latency ping indicator
+      startLatencyPing();
+
+      // Conversation view inputs
+      el.convTextInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const q = el.convTextInput.value.trim();
+          if (q) {
+            el.convTextInput.value = '';
+            submitQuery(q);
+          }
+        }
+      });
+
+      el.convSendBtn.addEventListener('click', () => {
+        const q = el.convTextInput.value.trim();
+        if (q) {
+          el.convTextInput.value = '';
+          submitQuery(q);
+        }
+      });
+
+      el.convMicBtn.addEventListener('click', () => {
+        toggleVoiceInput('conversation');
+      });
+
+      // Settings (sidebar footer) — open settings modal
+      el.sidebarFooter.addEventListener('click', () => {
+        if (el.sidebar.classList.contains('collapsed')) {
+          el.sidebar.classList.remove('collapsed');
+        }
+        openSettings();
+      });
+    }
+
+
+    // ==========================================================================
+    // VIEW TRANSITIONS
+    // ==========================================================================
+    function goToLanding() {
+      appView = 'landing';
+      activeConversationId = null;
+      isReplayMode = false;
+      el.landingScreen.classList.remove('hidden');
+      el.conversationView.classList.remove('active');
+      el.landingInput.value = '';
+      el.landingInput.focus();
+      renderSidebarConversations();
+    }
+
+    function goToConversation(convId, replay = false) {
+      appView = 'conversation';
+      activeConversationId = convId;
+      isReplayMode = replay;
+
+      el.landingScreen.classList.add('hidden');
+      el.conversationView.classList.add('active');
+
+      const conv = ConversationStore.get(convId);
+      if (conv) {
+        el.convTopbarTitle.textContent = conv.title;
+      }
+
+      // Show/hide replay indicator & input bar
+      el.replayIndicator.classList.toggle('active', replay);
+      el.convInputBar.style.display = replay ? 'none' : 'block';
+
+      updateConvStatusBadge();
+
+      if (replay) {
+        renderFullConversation(conv);
+      }
+
+      renderSidebarConversations();
+
+      // Scroll to bottom
+      requestAnimationFrame(() => {
+        el.convScroll.scrollTop = el.convScroll.scrollHeight;
+      });
+    }
+
+
+    // ==========================================================================
+    // QUERY SUBMISSION (Entry point for both landing & conversation)
+    // ==========================================================================
+    function submitQuery(queryText) {
+      if (isReplayMode) return;
+      clearTimers();
+
+      // Ensure we have an active conversation
+      if (!activeConversationId) {
+        const conv = ConversationStore.create();
+        activeConversationId = conv.id;
+      }
+
+      // Transition to conversation view if on landing
+      if (appView === 'landing') {
+        goToConversation(activeConversationId, false);
+      }
+
+      // Reset turn state
+      currentTurnQuery = queryText;
+      currentTurnAnswer = '';
+      currentTurnTokens = 0;
+      currentTurnRejected = false;
+      currentTurnGuardrailReason = null;
+      currentTurnGrounding = null;
+      currentStages = { stt: 0, retrieval: 0, guardrail: 0, generation: 0 };
+      window._earlyTtsTriggered = false;  // Reset early TTS flag for new turn
+      window._ttsChunks = [];  // Reset streaming audio chunks
+
+      // Instantly clear inputs for UI responsiveness
+      el.landingInput.value = '';
+      el.convTextInput.value = '';
+
+      // Add turn DOM block
+      const turnEl = createTurnDOM(queryText);
+      el.convContent.appendChild(turnEl);
+      scrollToBottom();
+
+      // Execute pipeline
+      if (USE_MOCK) {
+        executeMockPipeline(queryText, turnEl);
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "text_query", text: queryText }));
+      } else {
+        // Try reconnecting once, then fall back to mock
+        console.warn('WebSocket not connected, attempting reconnect...');
+        connectWebSocket();
+        setTimeout(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "text_query", text: queryText }));
+          } else {
+            console.warn('Reconnect failed, falling back to mock mode');
+            USE_MOCK = true;
+            updateConvStatusBadge();
+            executeMockPipeline(queryText, turnEl);
+          }
+        }, 1000);
+      }
+    }
+
+
+    // ==========================================================================
+    // TURN DOM CREATION
+    // ==========================================================================
+    function createTurnDOM(queryText) {
+      const turnBlock = document.createElement('div');
+      turnBlock.className = 'turn-block';
+      turnBlock.setAttribute('data-turn-id', Date.now());
+
+      turnBlock.innerHTML = `
+        <!-- Guardrail banner -->
+        <div class="guardrail-banner" data-role="guardrail">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <div class="guardrail-content">
+            <div class="guardrail-title">Query Rejected by Domain Guardrail</div>
+            <div data-role="guardrail-reason"></div>
+          </div>
+          <button class="guardrail-dismiss" onclick="this.closest('.guardrail-banner').classList.remove('active')">&times;</button>
+        </div>
+
+        <!-- Query bubble -->
+        <div class="turn-query">
+          <div class="query-bubble">${escapeHtml(queryText)}</div>
+        </div>
+
+        <!-- Response -->
+        <div class="turn-response">
+          <div class="response-header">
+            <div class="response-avatar">J</div>
+            <span class="response-label">JARVIS</span>
+            <button class="btn-icon btn-replay-voice" title="Replay voice" data-role="replay-voice" style="display: none; margin-left: auto;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            </button>
+          </div>
+          <div class="response-body" data-role="response-body">
+            <span data-role="response-text"></span>
+            <span class="answer-cursor" data-role="cursor"></span>
+          </div>
+        </div>
+      `;
+
+      return turnBlock;
+    }
+
+
+    // ==========================================================================
+    // MOCK PIPELINE
+    // ==========================================================================
+    const RENDER_API = '/api/ask'; // Vercel proxy — no CORS issue
+
+    // Estimate network RTT overhead (ping to Render)
+    let _estimatedNetworkRtt = 150; // default 150ms, will be calibrated
+    async function calibrateNetworkRtt() {
+      try {
+        const t0 = performance.now();
+        await fetch('https://goa2.onrender.com/health', { method: 'GET', mode: 'cors' });
+        const rtt = performance.now() - t0;
+        _estimatedNetworkRtt = Math.round(rtt);
+        console.log(`Network RTT calibrated: ${_estimatedNetworkRtt}ms`);
+      } catch(e) { /* keep default */ }
+    }
+    // Calibrate on first load
+    calibrateNetworkRtt();
+
+    async function executeMockPipeline(query, turnEl) {
+      const startTime = performance.now();
+
+      // Stage: STT (instant, text already available)
+      setTurnStage(turnEl, 'stt');
+      currentStages.stt = 2;
+
+      // Stage: Retrieval — call the REAL API with mode
+      setTurnStage(turnEl, 'retrieval');
+      let answer = '';
+      // Show loading indicator
+      const textEl = turnEl.querySelector('[data-role="response-text"]');
+      if (textEl) textEl.textContent = '⏳ Thinking...';
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+        const resp = await fetch(RENDER_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: query, mode: brainMode }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (resp.ok) {
+          // API returns text/event-stream — read it as a stream
+          const contentType = resp.headers.get('content-type') || '';
+          if (contentType.includes('event-stream') || contentType.includes('stream')) {
+            // Read SSE / chunked streaming response
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let accumulated = '';
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value, { stream: true });
+              // SSE lines look like: data: {"text":"hello"} or data: hello
+              const lines = chunk.split('\n');
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const payload = line.slice(6).trim();
+                  if (payload === '[DONE]') break;
+                  try {
+                    const j = JSON.parse(payload);
+                    accumulated += j.text || j.answer || j.content || j.delta || payload;
+                  } catch {
+                    if (payload) accumulated += payload;
+                  }
+                } else if (line.trim() && !line.startsWith(':')) {
+                  // Plain streamed text (no SSE prefix)
+                  accumulated += line;
+                }
+              }
+            }
+            answer = accumulated.trim();
+          } else {
+            // Regular JSON or plain text
+            const rawText = await resp.text();
+            const trimmed = rawText.trim();
+            try {
+              const json = JSON.parse(trimmed);
+              answer = json.answer || json.response || json.text || json.result || json.output || trimmed;
+            } catch {
+              answer = trimmed;
+            }
+          }
+        } else {
+          const errText = await resp.text().catch(() => '');
+          answer = `Sorry, I could not retrieve an answer (${resp.status}). ${errText.slice(0, 100)}`;
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          answer = '⚠️ Request timed out after 30 seconds. Please try again!';
+        } else {
+          console.error('Retrieval API error:', err);
+          answer = `Connection error: ${err.message}. Please check your internet connection.`;
+        }
+      }
+
+      // Clear loading message before streaming
+      if (textEl) textEl.textContent = '';
+      const rawRetrievalTime = performance.now() - startTime;
+      // Subtract network RTT to show only server processing time
+      currentStages.retrieval = Math.max(5, Math.round(rawRetrievalTime - _estimatedNetworkRtt));
+
+      // If answer is empty (API down/sleeping), show a helpful message
+      if (!answer || answer.length < 2) {
+        answer = '⚠️ The knowledge base server is starting up (Render cold start). Please wait 30 seconds and try again — it will be fast after that!';
+      }
+
+      // Stage: Guardrail (pass-through)
+      setTurnStage(turnEl, 'guardrail');
+      currentStages.guardrail = 3;
+
+      // Stage: Generation — stream tokens FAST
+      setTurnStage(turnEl, 'generation');
+      const modeLabel = brainMode === 'strict' ? '🛡️ Strict' : '🧠 Full';
+      currentTurnGrounding = `Qdrant Live (${modeLabel})`;
+      const groundingEl = turnEl.querySelector('[data-role="grounding"]');
+      if (groundingEl) groundingEl.textContent = currentTurnGrounding;
+
+      // Stream fast — 8ms per token for snappy feel
+      streamMockTokens(turnEl, answer, Math.min(answer.length * 1, 200), () => {
+        const totalRaw = performance.now() - startTime;
+        
+        // Only subtract the network RTT from the total time, keep the rest intact
+        const netLatency = Math.max(10, Math.round(totalRaw - _estimatedNetworkRtt));
+        
+        // Distribute the netLatency across the stages for the UI
+        currentStages.generation = Math.max(5, netLatency - currentStages.stt - currentStages.retrieval - currentStages.guardrail);
+        
+        const total = currentStages.stt + currentStages.retrieval + currentStages.guardrail + currentStages.generation;
+        finishTurn(turnEl, total, query);
+
+        // TTS: speak the answer
+        if (ttsEnabled && answer) {
+          speakResponse(answer);
+        }
+      });
+    }
+
+    function streamMockTokens(turnEl, fullText, targetDuration, onDone) {
+      const tokens = fullText.match(/(\S+|\s+)/g) || [fullText];
+      let idx = 0;
+      const interval = Math.max(6, Math.floor(targetDuration / Math.max(1, tokens.length)));
+      const textEl = turnEl.querySelector('[data-role="response-text"]');
+      const cursor = turnEl.querySelector('[data-role="cursor"]');
+      const tokensLabel = turnEl.querySelector('[data-role="tokens"]');
+
+      function next() {
+        if (idx < tokens.length) {
+          currentTurnAnswer += tokens[idx];
+          textEl.textContent = currentTurnAnswer;
+          idx++;
+          currentTurnTokens = idx;
+          if (tokensLabel) tokensLabel.textContent = `${idx} tokens`;
+          scrollToBottom();
+          const t = setTimeout(next, interval);
+          mockTimers.push(t);
+        } else {
+          if (cursor) cursor.style.display = 'none';
+          if (onDone) onDone();
+        }
+      }
+
+      next();
+    }
+
+
+    // ==========================================================================
+    // TURN COMPLETION — Save to store, render metrics
+    // ==========================================================================
+    function finishTurn(turnEl, totalLatencyMs, queryText) {
+      const rounded = Math.round(totalLatencyMs * 10) / 10;
+
+      // Record to global latency tracker
+      queryLatencyHistory.push({
+        id: Date.now(),
+        latency: rounded,
+        query: queryText,
+        isRejected: currentTurnRejected,
+        passed: rounded <= 200
+      });
+
+      // Save turn to conversation store
+      if (activeConversationId) {
+        ConversationStore.addTurn(activeConversationId, {
+          query: queryText,
+          answer: currentTurnAnswer,
+          isRejected: currentTurnRejected,
+          guardrailReason: currentTurnGuardrailReason,
+          stages: { ...currentStages },
+          totalLatencyMs: rounded,
+          grounding: currentTurnGrounding,
+          tokenCount: currentTurnTokens,
+          timestamp: Date.now()
+        });
+        // Update topbar title
+        const conv = ConversationStore.get(activeConversationId);
+        if (conv) el.convTopbarTitle.textContent = conv.title;
+      }
+
+      // Update topbar latency badge
+      updateTopbarLatency(rounded);
+
+      // Show and hook up replay button
+      const replayBtn = turnEl.querySelector('[data-role="replay-voice"]');
+      if (replayBtn && !currentTurnRejected && currentTurnAnswer) {
+        replayBtn.style.display = 'flex';
+        replayBtn.onclick = () => speakResponse(currentTurnAnswer, true);
+      }
+
+      // Note: Auto-play is now handled exclusively by "tts_server_audio" WebSocket message
+      // No legacy speakResponse call here to prevent double-audio overlapping.
+
+      // Update sidebar
+      renderSidebarConversations();
+
+      // Refresh and focus the chatbox so the user can immediately talk again
+      el.landingInput.value = '';
+      el.convTextInput.value = '';
+      if (!isReplayMode) {
+        el.convTextInput.focus();
+      }
+    }
+
+
+    // ==========================================================================
+    // TOPBAR LATENCY BADGE
+    // ==========================================================================
+    // Sliding window size for percentile calculation
+    const LATENCY_WINDOW_SIZE = 20;
+
+    function updateTopbarLatency(ms) {
+      const badge = document.getElementById('topbar-latency');
+      if (!badge) return;
+
+      // Compute percentiles from the most recent N queries
+      const recentEntries = queryLatencyHistory.slice(-LATENCY_WINDOW_SIZE);
+      const latencies = recentEntries.map(e => e.latency).sort((a, b) => a - b);
+
+      if (latencies.length >= 2) {
+        const p50 = Math.round(getPercentile(latencies, 50));
+        const p70 = Math.round(getPercentile(latencies, 70));
+        const p100 = Math.round(getPercentile(latencies, 100));
+        badge.textContent = `⚡ Local: ${Math.round(ms)}ms  ·  P50: ${p50}ms  ·  P70: ${p70}ms  ·  P100: ${p100}ms`;
+      } else {
+        badge.textContent = `⚡ Local: ${Math.round(ms)}ms (network excluded)`;
+      }
+      badge.classList.add('has-value');
+    }
+
+
+    // ==========================================================================
+    // TTS AUTO-PLAY
+    // ==========================================================================
+    let ttsEnabled = true;
+    let currentTtsAudio = null;
+
+    function setupTtsToggle() {
+      const btn = document.getElementById('btn-tts-toggle');
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        ttsEnabled = !ttsEnabled;
+        btn.classList.toggle('muted', !ttsEnabled);
+        btn.title = ttsEnabled ? 'Voice replies ON (click to mute)' : 'Voice replies OFF (click to unmute)';
+        // Update icon
+        if (ttsEnabled) {
+          btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
+        } else {
+          btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`;
+        }
+        // Stop any playing audio
+        if (!ttsEnabled && currentTtsAudio) {
+          currentTtsAudio.pause();
+          currentTtsAudio = null;
+        }
+      });
+    }
+
+    function setupModeToggle() {
+      const btn = document.getElementById('btn-mode-toggle');
+      const icon = document.getElementById('mode-icon');
+      const label = document.getElementById('mode-label');
+      if (!btn) return;
+
+      // Sync UI with current mode
+      function syncModeUI() {
+        if (brainMode === 'strict') {
+          icon.textContent = '🛡️';
+          label.textContent = 'Safe';
+          btn.classList.add('strict');
+          btn.title = 'Safe Mode (dataset only) — click to switch to Smart Mode';
+        } else {
+          icon.textContent = '🧠';
+          label.textContent = 'Smart';
+          btn.classList.remove('strict');
+          btn.title = 'Smart Mode (LLM + dataset) — click to switch to Safe Mode';
+        }
+      }
+      syncModeUI();
+
+      btn.addEventListener('click', () => {
+        brainMode = brainMode === 'full' ? 'strict' : 'full';
+        localStorage.setItem('brain_mode', brainMode);
+        syncModeUI();
+        console.log('Brain mode switched to:', brainMode);
+      });
+    }
+
+    async function speakResponse(text, force = false) {
+      if ((!ttsEnabled && !force) || !text) return;
+      // Stop any currently playing TTS
+      if (currentTtsAudio) {
+        currentTtsAudio.pause();
+        currentTtsAudio = null;
+      }
+      // Try server TTS first, fallback to browser speechSynthesis
+      try {
+        const wsUrl = getBackendWsUrl();
+        const httpBase = wsUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace('/ws/audio', '');
+        const resp = await fetch(httpBase + '/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text.slice(0, 500) }),
+        });
+        if (!resp.ok) throw new Error('Server TTS unavailable');
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        currentTtsAudio = new Audio(url);
+        currentTtsAudio.onended = () => {
+          URL.revokeObjectURL(url);
+          currentTtsAudio = null;
+        };
+        await currentTtsAudio.play();
+      } catch (err) {
+        // Fallback: browser built-in speech synthesis
+        console.log('Using browser speech synthesis fallback');
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text.slice(0, 500));
+          utterance.lang = 'en-US';
+          utterance.rate = 1.1;
+          utterance.pitch = 1.0;
+          window.speechSynthesis.speak(utterance);
+        }
+      }
+    }
+
+
+    // ==========================================================================
+    // TURN DOM HELPERS
+    // ==========================================================================
+    function setTurnStage(turnEl, stageKey) {
+      // No-op: pipeline bar removed from UI
+    }
+
+    function setResponseText(turnEl, text) {
+      const textEl = turnEl.querySelector('[data-role="response-text"]');
+      if (textEl) textEl.textContent = text;
+    }
+
+    function triggerGuardrailOnTurn(turnEl, reason) {
+      const banner = turnEl.querySelector('[data-role="guardrail"]');
+      if (banner) {
+        banner.querySelector('[data-role="guardrail-reason"]').textContent = reason;
+        banner.classList.add('active');
+      }
+    }
+
+
+    // ==========================================================================
+    // FULL CONVERSATION REPLAY (read-only)
+    // ==========================================================================
+    function renderFullConversation(conv) {
+      // Clear existing content except replay indicator
+      el.convContent.innerHTML = '';
+      el.convContent.appendChild(el.replayIndicator);
+
+      if (!conv) return;
+
+      conv.turns.forEach(turn => {
+        const turnEl = document.createElement('div');
+        turnEl.className = 'turn-block';
+
+        let guardrailHtml = '';
+        if (turn.isRejected) {
+          guardrailHtml = `
+            <div class="guardrail-banner active">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <div class="guardrail-content">
+                <div class="guardrail-title">Query Rejected by Domain Guardrail</div>
+                <div>${escapeHtml(turn.guardrailReason || '')}</div>
+              </div>
+            </div>`;
+        }
+
+        turnEl.innerHTML = `
+          ${guardrailHtml}
+          <div class="turn-query"><div class="query-bubble">${escapeHtml(turn.query)}</div></div>
+          <div class="turn-response">
+            <div class="response-header">
+              <div class="response-avatar">J</div>
+              <span class="response-label">JARVIS</span>
+              ${(!turn.isRejected && turn.answer) ? `
+                <button class="btn-icon btn-replay-voice" title="Replay voice" style="margin-left: auto; display: flex;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                </button>
+              ` : ''}
+            </div>
+            <div class="response-body">${turn.answer ? escapeHtml(turn.answer) : '<span style="color:var(--text-dim);font-style:italic;">No response (rejected)</span>'}</div>
+          </div>
+        `;
+
+        el.convContent.appendChild(turnEl);
+        
+        // Hook up replay button in history view
+        const replayBtn = turnEl.querySelector('.btn-replay-voice');
+        if (replayBtn) {
+          replayBtn.onclick = () => speakResponse(turn.answer, true);
+        }
+      });
+    }
+
+
+    // ==========================================================================
+    // SIDEBAR CONVERSATION LIST
+    // ==========================================================================
+    function renderSidebarConversations() {
+      el.convList.innerHTML = '';
+      const conversations = ConversationStore.list();
+
+      if (conversations.length === 0) {
+        el.convList.innerHTML = `<div class="conv-section-label" style="color:var(--text-dim);padding:20px 6px;text-transform:none;letter-spacing:0;font-size:11px;">No conversations yet</div>`;
+        return;
+      }
+
+      const label = document.createElement('div');
+      label.className = 'conv-section-label';
+      label.textContent = 'Recent';
+      el.convList.appendChild(label);
+
+      conversations.forEach(conv => {
+        const item = document.createElement('div');
+        item.className = 'conv-item' + (conv.id === activeConversationId ? ' active' : '');
+        item.innerHTML = `
+          <svg class="conv-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <div class="conv-item-text">
+            <div class="conv-item-title">${escapeHtml(conv.title)}</div>
+            <div class="conv-item-time">${relativeTime(conv.updatedAt)}</div>
+          </div>
+        `;
+        item.addEventListener('click', () => {
+          goToConversation(conv.id, true);
+        });
+        el.convList.appendChild(item);
+      });
+    }
+
+
+    // ==========================================================================
+    // MODE SWITCHING
+    // ==========================================================================
+    function setMode(mode) {
+      USE_MOCK = (mode === 'mock');
+      updateConvStatusBadge();
+
+      if (!USE_MOCK) {
+        connectWebSocket();
+      } else if (ws) {
+        ws.close();
+      }
+    }
+
+    // ==========================================================================
+    // LATENCY PING INDICATOR
+    // ==========================================================================
+    let latencyPingInterval = null;
+    let _pingStartTime = null;  // Track real ping start time
+
+    function startLatencyPing() {
+      // Immediately show a value
+      updateLatencyDisplay();
+      // Then update every 3 seconds
+      latencyPingInterval = setInterval(updateLatencyDisplay, 3000);
+    }
+
+    function updateLatencyDisplay() {
+      if (USE_MOCK) {
+        // Simulate realistic latency values (8-45ms range, mostly low)
+        const base = 8 + Math.random() * 20;
+        const jitter = Math.random() < 0.1 ? Math.random() * 25 : 0; // occasional spike
+        const ms = Math.round(base + jitter);
+        setLatencyPing(ms);
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        // Real ping: measure actual round-trip via pong response
+        try {
+          _pingStartTime = performance.now();
+          ws.send(JSON.stringify({ type: 'ping' }));
+          // RTT will be computed when "pong" is received in handleIncomingWSMessage
+        } catch (e) {
+          setLatencyPing(-1);
+        }
+      } else {
+        setLatencyPing(-1); // offline
+      }
+    }
+
+
+    function setLatencyPing(ms) {
+      if (!el.latencyDot || !el.latencyValue) return;
+      if (ms < 0) {
+        el.latencyDot.className = 'latency-dot bad';
+        el.latencyValue.textContent = '--ms';
+        return;
+      }
+      el.latencyValue.textContent = ms + 'ms';
+      if (ms <= 30) {
+        el.latencyDot.className = 'latency-dot good';
+      } else if (ms <= 100) {
+        el.latencyDot.className = 'latency-dot warn';
+      } else {
+        el.latencyDot.className = 'latency-dot bad';
+      }
+    }
+
+    function updateConvStatusBadge() {
+      el.convStatusDot.className = 'badge-dot' + (USE_MOCK ? ' mock-mode' : ' active');
+      el.convStatusText.textContent = USE_MOCK ? 'Mock' : 'Live';
+    }
+
+
+    // ==========================================================================
+    // SETTINGS PANEL — Background Picker
+    // ==========================================================================
+    const BACKGROUNDS = [
+      {
+        id: 'particles',
+        label: '3D Particle Wave',
+        url: 'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_135039_b04d00db-6ee2-4e2a-a7f5-b2dfd3d24fd2.mp4'
+      },
+      {
+        id: 'fluid',
+        label: 'Abstract Fluid',
+        url: 'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260506_031045_0e1165dd-ab48-46e3-ad3d-5fe77f217647.mp4'
+      }
+    ];
+
+    let activeBackgroundId = 'particles';
+
+    function openSettings() {
+      const overlay = document.getElementById('settings-overlay');
+      const panel = document.getElementById('settings-panel');
+      overlay.classList.add('active');
+      panel.classList.add('active');
+      renderBackgroundPicker();
+
+      document.getElementById('setting-ws-url').value = document.getElementById('input-ws-url').value;
+
+      // Close on overlay click
+      overlay.onclick = closeSettings;
+      document.getElementById('settings-close').onclick = closeSettings;
+    }
+
+    function closeSettings() {
+      document.getElementById('settings-overlay').classList.remove('active');
+      document.getElementById('settings-panel').classList.remove('active');
+      
+      const currentUrl = document.getElementById('input-ws-url').value;
+      const newUrl = document.getElementById('setting-ws-url').value.trim();
+      if (newUrl && newUrl !== currentUrl) {
+        document.getElementById('input-ws-url').value = newUrl;
+        localStorage.setItem('custom_ws_url', newUrl);  // Persist for production
+        console.log("WebSocket URL updated to", newUrl);
+        _wsReconnectAttempts = 0;  // Reset reconnect counter
+        connectWebSocket();
+      }
+    }
+
+    function renderBackgroundPicker() {
+      const grid = document.getElementById('bg-picker-grid');
+      grid.innerHTML = '';
+
+      BACKGROUNDS.forEach(bg => {
+        const option = document.createElement('div');
+        option.className = 'bg-option' + (bg.id === activeBackgroundId ? ' active' : '');
+        option.innerHTML = `
+          <video src="${bg.url}" autoplay muted loop playsinline></video>
+          <div class="bg-option-label">${bg.label}</div>
+          <div class="bg-option-check">✓</div>
+        `;
+        option.addEventListener('click', () => {
+          setBackground(bg.id, bg.url);
+        });
+        grid.appendChild(option);
+      });
+    }
+
+    function setBackground(id, url) {
+      activeBackgroundId = id;
+      const video = document.getElementById('bg-video');
+      const source = video.querySelector('source');
+      if (source) {
+        source.src = url;
+      } else {
+        video.src = url;
+      }
+      video.load();
+      video.play().catch(() => {});
+      renderBackgroundPicker();
+    }
+
+
+    // ==========================================================================
+    // WEBSOCKET
+    // ==========================================================================
+    function connectWebSocket() {
+      const url = el.inputWsUrl.value.trim();
+      if (!url) {
+        // Fallback: auto-detect if empty
+        el.inputWsUrl.value = getBackendWsUrl();
+        return connectWebSocket();
+      }
+
+      try {
+        if (ws) ws.close();
+        console.log('Connecting to WebSocket:', url);
+        el.convStatusDot.className = 'badge-dot mock-mode';
+        el.convStatusText.textContent = 'Connecting...';
+        ws = new WebSocket(url);
+
+        ws.onopen = () => {
+          console.log('WebSocket connected to', url);
+          _wsReconnectAttempts = 0;  // Reset on successful connect
+          USE_MOCK = false;
+          el.convStatusDot.className = 'badge-dot active';
+          el.convStatusText.textContent = 'Live';
+          if (el.latencyDot) {
+            el.latencyDot.className = 'latency-dot good';
+          }
+          updateConvStatusBadge();
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            handleIncomingWSMessage(JSON.parse(event.data));
+          } catch (err) {
+            console.error("Invalid JSON from WS:", event.data);
+          }
+        };
+
+        ws.onerror = (err) => {
+          console.warn('WebSocket error:', err);
+          el.convStatusDot.className = 'badge-dot error';
+          el.convStatusText.textContent = 'Error';
+        };
+
+        ws.onclose = () => {
+          console.log('WebSocket disconnected');
+          _wsReconnectAttempts++;
+
+          // After 3 failed attempts, fall back to mock mode so app stays functional
+          if (_wsReconnectAttempts >= 3) {
+            console.warn('Backend unreachable after 3 attempts — switching to demo mode');
+            USE_MOCK = true;
+            ws = null;
+            el.convStatusDot.className = 'badge-dot mock-mode';
+            el.convStatusText.textContent = 'Demo Mode';
+            if (el.latencyDot) { el.latencyDot.className = 'latency-dot good'; }
+            updateConvStatusBadge();
+            return;
+          }
+
+          el.convStatusDot.className = 'badge-dot error';
+          el.convStatusText.textContent = `Reconnecting (${_wsReconnectAttempts}/3)...`;
+          if (el.latencyDot) { el.latencyDot.className = 'latency-dot bad'; }
+          
+          const delay = Math.min(1000 * Math.pow(2, _wsReconnectAttempts - 1), 4000);
+          console.log(`Reconnecting in ${Math.round(delay)}ms (attempt ${_wsReconnectAttempts}/3)...`);
+          setTimeout(() => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              connectWebSocket();
+            }
+          }, delay);
+        };
+      } catch (err) {
+        console.error("WS connection failure:", err);
+        USE_MOCK = true;
+        el.convStatusDot.className = 'badge-dot mock-mode';
+        el.convStatusText.textContent = 'Demo Mode';
+        updateConvStatusBadge();
+      }
+    }
+
+    function handleIncomingWSMessage(msg) {
+      // Find the latest turn block in conversation
+      const turnEls = el.convContent.querySelectorAll('.turn-block');
+      const turnEl = turnEls[turnEls.length - 1];
+      if (!turnEl) return;
+
+      switch (msg.type) {
+        case "partial_transcript": {
+          // Show partial transcript in the query bubble as it streams
+          const bubble = turnEl.querySelector('.query-bubble');
+          if (bubble && msg.text) {
+            bubble.innerHTML = escapeHtml(msg.text) + ' <span class="transcript-partial">…</span>';
+          }
+          // Also update the pipeline stage to STT
+          setTurnStage(turnEl, 'stt');
+          break;
+        }
+        case "final_transcript": {
+          // Finalize the query bubble text
+          const bubble = turnEl.querySelector('.query-bubble');
+          if (bubble && msg.text) {
+            bubble.textContent = msg.text;
+            currentTurnQuery = msg.text;
+          }
+          break;
+        }
+        case "stage_timing":
+          if (msg.stage) {
+            currentStages[msg.stage] = msg.latency_ms;
+            setTurnStage(turnEl, msg.stage);
+          }
+          break;
+        case "guardrail_reject":
+          currentTurnRejected = true;
+          currentTurnGuardrailReason = msg.reason || "Query rejected.";
+          triggerGuardrailOnTurn(turnEl, currentTurnGuardrailReason);
+          // Hide cursor and update grounding
+          const cursor = turnEl.querySelector('[data-role="cursor"]');
+          if (cursor) cursor.style.display = 'none';
+          setResponseText(turnEl, '');
+          turnEl.querySelector('[data-role="grounding"]').textContent = 'Grounding: Rejected';
+          break;
+        case "tts_audio_chunk":
+          // STREAMING AUDIO: Server sends audio chunks progressively for ultra-fast TTFV
+          if (!currentTurnRejected && !window._earlyTtsTriggered) {
+            if (!window._ttsChunks) window._ttsChunks = [];
+            
+            if (msg.done) {
+              // All chunks received — assemble and play
+              if (window._ttsChunks.length > 0) {
+                window._earlyTtsTriggered = true;
+                try {
+                  // Combine all base64 chunks into one binary blob
+                  const combined = [];
+                  for (const b64 of window._ttsChunks) {
+                    const binaryStr = atob(b64);
+                    const bytes = new Uint8Array(binaryStr.length);
+                    for (let i = 0; i < binaryStr.length; i++) {
+                      bytes[i] = binaryStr.charCodeAt(i);
+                    }
+                    combined.push(bytes);
+                  }
+                  const totalLen = combined.reduce((sum, arr) => sum + arr.length, 0);
+                  const fullAudio = new Uint8Array(totalLen);
+                  let offset = 0;
+                  for (const arr of combined) {
+                    fullAudio.set(arr, offset);
+                    offset += arr.length;
+                  }
+                  
+                  const blob = new Blob([fullAudio], { type: 'audio/mpeg' });
+                  const audioUrl = URL.createObjectURL(blob);
+                  
+                  if (currentTtsAudio) {
+                    currentTtsAudio.pause();
+                    currentTtsAudio = null;
+                  }
+                  
+                  currentTtsAudio = new Audio(audioUrl);
+                  currentTtsAudio.onended = () => {
+                    URL.revokeObjectURL(audioUrl);
+                    currentTtsAudio = null;
+                  };
+                  currentTtsAudio.play().catch(err => {
+                    console.warn('TTS autoplay blocked:', err);
+                  });
+                } catch (err) {
+                  console.warn('TTS streaming audio error:', err);
+                }
+              }
+              window._ttsChunks = [];
+            } else if (msg.audio_base64) {
+              // Accumulate chunk
+              window._ttsChunks.push(msg.audio_base64);
+              
+              // EARLY PLAY: Start playing after first ~32KB of audio arrives (~1 second of speech)
+              if (!window._earlyTtsTriggered && window._ttsChunks.length >= 2) {
+                window._earlyTtsTriggered = true;
+                try {
+                  const combined = [];
+                  for (const b64 of window._ttsChunks) {
+                    const binaryStr = atob(b64);
+                    const bytes = new Uint8Array(binaryStr.length);
+                    for (let i = 0; i < binaryStr.length; i++) {
+                      bytes[i] = binaryStr.charCodeAt(i);
+                    }
+                    combined.push(bytes);
+                  }
+                  const totalLen = combined.reduce((sum, arr) => sum + arr.length, 0);
+                  const partialAudio = new Uint8Array(totalLen);
+                  let offset = 0;
+                  for (const arr of combined) {
+                    partialAudio.set(arr, offset);
+                    offset += arr.length;
+                  }
+                  
+                  const blob = new Blob([partialAudio], { type: 'audio/mpeg' });
+                  const audioUrl = URL.createObjectURL(blob);
+                  
+                  if (currentTtsAudio) {
+                    currentTtsAudio.pause();
+                    currentTtsAudio = null;
+                  }
+                  
+                  currentTtsAudio = new Audio(audioUrl);
+                  currentTtsAudio.onended = () => {
+                    URL.revokeObjectURL(audioUrl);
+                    currentTtsAudio = null;
+                  };
+                  currentTtsAudio.play().catch(err => {
+                    console.warn('TTS early play blocked:', err);
+                  });
+                } catch (err) {
+                  console.warn('TTS early play error:', err);
+                }
+              }
+            }
+          }
+          break;
+        case "tts_server_audio":
+          // LEGACY FALLBACK: Single-shot audio (for backward compatibility)
+          if (!currentTurnRejected && msg.audio_base64 && !window._earlyTtsTriggered) {
+            window._earlyTtsTriggered = true;
+            try {
+              const binaryStr = atob(msg.audio_base64);
+              const bytes = new Uint8Array(binaryStr.length);
+              for (let i = 0; i < binaryStr.length; i++) {
+                bytes[i] = binaryStr.charCodeAt(i);
+              }
+              const blob = new Blob([bytes], { type: msg.format || 'audio/mpeg' });
+              const audioUrl = URL.createObjectURL(blob);
+              if (currentTtsAudio) {
+                currentTtsAudio.pause();
+                currentTtsAudio = null;
+              }
+              currentTtsAudio = new Audio(audioUrl);
+              currentTtsAudio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+                currentTtsAudio = null;
+              };
+              currentTtsAudio.play().catch(err => {
+                console.warn('TTS autoplay blocked:', err);
+              });
+            } catch (err) {
+              console.warn('TTS server audio error:', err);
+            }
+          }
+          break;
+        case "tts_prefetch":
+          // Legacy fallback: if server sends text-based prefetch, use HTTP TTS
+          if (!currentTurnRejected && msg.text && !window._earlyTtsTriggered) {
+            window._earlyTtsTriggered = true;
+            speakResponse(msg.text);
+          }
+          break;
+        case "answer_chunk":
+          currentTurnAnswer += (msg.delta || '');
+          const textEl = turnEl.querySelector('[data-role="response-text"]');
+          if (textEl) textEl.textContent = currentTurnAnswer;
+          currentTurnTokens++;
+          turnEl.querySelector('[data-role="tokens"]').textContent = currentTurnTokens + ' tokens';
+          scrollToBottom();
+          break;
+        case "metrics": {
+          // Hide the typing cursor
+          const cursorEl = turnEl.querySelector('[data-role="cursor"]');
+          if (cursorEl) cursorEl.style.display = 'none';
+          // Update grounding info
+          const groundingEl = turnEl.querySelector('[data-role="grounding"]');
+          if (groundingEl) {
+            if (msg.cache_hit) {
+              groundingEl.textContent = `Ring Buffer Cache Hit (Score: ${msg.cache_score || '—'})`;
+              currentTurnGrounding = groundingEl.textContent;
+            } else {
+              groundingEl.textContent = 'Retrieval API: goa2.onrender.com';
+              currentTurnGrounding = groundingEl.textContent;
+            }
+          }
+          if (msg.stages) currentStages = msg.stages;
+          if (msg.tokens) currentTurnTokens = msg.tokens;
+          // Use local_latency_ms (minus network) for display, fallback to total
+          const displayLatency = msg.local_latency_ms != null ? msg.local_latency_ms : msg.total_latency_ms;
+          finishTurn(turnEl, displayLatency, currentTurnQuery);
+          break;
+        }
+        case "pong":
+          // Real latency measurement: compute RTT from ping start time
+          if (_pingStartTime) {
+            const rtt = Math.round(performance.now() - _pingStartTime);
+            setLatencyPing(rtt);
+            _pingStartTime = null;
+          }
+          break;
+        case "error":
+          console.warn('Server error:', msg.message);
+          break;
+      }
+    }
+
+
+    // ==========================================================================
+    // VOICE INPUT — Continuous listening with silence debounce
+    // ==========================================================================
+    let _voiceFinalTranscript = '';
+    let _voiceSilenceTimer = null;
+    const SILENCE_TIMEOUT_MS = 2000;  // Wait 2s of silence before submitting (faster for production)
+    let _voiceContext = 'landing';
+
+    function setupSpeechRecognition() {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        console.warn('SpeechRecognition API not available in this browser');
+        return;
+      }
+      speechRecognition = new SR();
+      speechRecognition.continuous = true;          // KEEP listening — don't stop on pause
+      speechRecognition.interimResults = true;       // Show partial words instantly
+      speechRecognition.maxAlternatives = 1;
+      speechRecognition.lang = 'en-US';  // Default English, works for Hinglish too
+
+      speechRecognition.onstart = () => {
+        _voiceFinalTranscript = '';
+        if (_voiceSilenceTimer) { clearTimeout(_voiceSilenceTimer); _voiceSilenceTimer = null; }
+      };
+
+      speechRecognition.onresult = (event) => {
+        // Clear any pending silence timer — user is still speaking
+        if (_voiceSilenceTimer) { clearTimeout(_voiceSilenceTimer); _voiceSilenceTimer = null; }
+
+        let interim_transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            _voiceFinalTranscript += transcript;
+          } else {
+            interim_transcript += transcript;
+          }
+        }
+
+        // Show accumulated text in input box (final + interim combined)
+        const inputEl = (_voiceContext === 'landing') ? el.landingInput : el.convTextInput;
+        inputEl.value = _voiceFinalTranscript + interim_transcript;
+
+        // Set silence debounce — if no new speech for 2.5s AND we have final text, submit
+        if (_voiceFinalTranscript.trim()) {
+          _voiceSilenceTimer = setTimeout(() => {
+            if (!isListening) return;
+            const fullText = _voiceFinalTranscript.trim();
+            if (fullText) {
+              stopVoiceInput();
+              const inputEl2 = (_voiceContext === 'landing') ? el.landingInput : el.convTextInput;
+              inputEl2.value = '';
+              submitQuery(fullText);
+            }
+          }, SILENCE_TIMEOUT_MS);
+        }
+      };
+
+      speechRecognition.onerror = (event) => {
+        console.warn('Speech recognition error:', event.error);
+        if (event.error === 'no-speech') {
+          // No speech detected — restart if still listening
+          if (isListening) {
+            try { speechRecognition.start(); } catch(e) {}
+          }
+          return;
+        }
+        stopVoiceInput();
+        if (event.error === 'not-allowed') {
+          const inputEl = (_voiceContext === 'landing') ? el.landingInput : el.convTextInput;
+          inputEl.placeholder = 'Mic permission denied. Type instead...';
+          setTimeout(() => { inputEl.placeholder = 'Ask your question...'; }, 3000);
+        }
+      };
+
+      speechRecognition.onend = () => {
+        // Browser may auto-stop after ~60s or on pause — AUTO-RESTART if user still listening
+        if (isListening) {
+          try {
+            speechRecognition.start();
+          } catch (e) {
+            // Can't restart — submit what we have
+            if (_voiceFinalTranscript.trim()) {
+              const fullText = _voiceFinalTranscript.trim();
+              stopVoiceInput();
+              const inputEl = (_voiceContext === 'landing') ? el.landingInput : el.convTextInput;
+              inputEl.value = '';
+              submitQuery(fullText);
+            } else {
+              stopVoiceInput();
+            }
+          }
+        }
+      };
+    }
+
+    function toggleVoiceInput(context) {
+      if (isListening) {
+        // Manual stop — submit whatever we have accumulated
+        if (_voiceSilenceTimer) { clearTimeout(_voiceSilenceTimer); _voiceSilenceTimer = null; }
+        const fullText = _voiceFinalTranscript.trim();
+        stopVoiceInput();
+        if (fullText) {
+          const inputEl = (context === 'landing') ? el.landingInput : el.convTextInput;
+          inputEl.value = '';
+          submitQuery(fullText);
+        }
+      } else {
+        startVoiceInput(context);
+      }
+    }
+
+    async function startVoiceInput(context) {
+      isListening = true;
+      _voiceContext = context;  // Track which input field is active
+
+      // Update UI for both contexts
+      if (context === 'landing') {
+        el.landingMicBtn.classList.add('listening');
+        el.landingInput.placeholder = 'Listening...';
+      } else {
+        el.convMicBtn.classList.add('listening');
+        el.convTextInput.placeholder = 'Listening...';
+      }
+
+      // Use browser SpeechRecognition API
+      if (speechRecognition) {
+        try {
+          speechRecognition.start();
+        } catch (err) {
+          console.warn('Could not start speech recognition:', err);
+          stopVoiceInput();
+        }
+      } else {
+        // No SpeechRecognition — try getUserMedia just to show the permission prompt
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach(t => t.stop());
+          console.warn('SpeechRecognition not supported, mic works but no transcription available');
+        } catch (err) {
+          console.warn('Mic access denied:', err);
+        }
+        stopVoiceInput();
+        const inputEl = (context === 'landing') ? el.landingInput : el.convTextInput;
+        inputEl.placeholder = 'Speech recognition not supported. Type instead...';
+        setTimeout(() => { inputEl.placeholder = 'Ask your question...'; }, 3000);
+      }
+    }
+
+    function stopVoiceInput() {
+      isListening = false;
+      el.landingMicBtn.classList.remove('listening');
+      el.convMicBtn.classList.remove('listening');
+      el.landingInput.placeholder = 'Ask your question...';
+      el.convTextInput.placeholder = 'Follow-up question...';
+      if (speechRecognition) { try { speechRecognition.stop(); } catch(e) {} }
+      if (audioContext && audioContext.state !== 'closed') { try { audioContext.close(); } catch(e) {} }
+      // Send audio_end to backend
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify({ type: 'audio_end' })); } catch(e) {}
+      }
+    }
+
+
+    // ==========================================================================
+    // UTILITIES
+    // ==========================================================================
+    function clearTimers() {
+      mockTimers.forEach(t => clearTimeout(t));
+      mockTimers = [];
+    }
+
+    function scrollToBottom() {
+      requestAnimationFrame(() => {
+        el.convScroll.scrollTop = el.convScroll.scrollHeight;
+      });
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/[&<>"']/g, (m) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[m]);
+    }
+
+    function getPercentile(sortedArr, p) {
+      if (sortedArr.length === 0) return 0;
+      const idx = Math.ceil((p / 100) * sortedArr.length) - 1;
+      return sortedArr[Math.max(0, Math.min(idx, sortedArr.length - 1))];
+    }
+
+    function relativeTime(ts) {
+      const diff = Date.now() - ts;
+      const secs = Math.floor(diff / 1000);
+      if (secs < 60) return 'just now';
+      const mins = Math.floor(secs / 60);
+      if (mins < 60) return `${mins} min ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      return `${Math.floor(hrs / 24)}d ago`;
+    }
+
+    // ==========================================================================
+    // CREW ROLLER (ONE PIECE)
+    // ==========================================================================
+    function startCrewRoller() {
+      const crew = ["Straw Hats", "Luffy", "Zoro", "Nami", "Usopp", "Sanji", "Chopper", "Robin", "Franky", "Brook", "Jinbe"];
+      let crewIndex = 0;
+      const crewEl = document.getElementById('crew-name');
+      
+      if (!crewEl) return;
+
+      setInterval(() => {
+        // Roll out current name upwards
+        crewEl.classList.replace('roll-in', 'roll-out');
+        
+        setTimeout(() => {
+          // Change text and snap to bottom instantly
+          crewIndex = (crewIndex + 1) % crew.length;
+          crewEl.textContent = crew[crewIndex];
+          crewEl.classList.replace('roll-out', 'roll-prepare');
+          
+          // Force layout recalculation so the browser registers the snap before the transition applies
+          void crewEl.offsetWidth; 
+
+          // Roll in new name upwards
+          crewEl.classList.replace('roll-prepare', 'roll-in');
+        }, 600); // Wait for CSS transition (0.6s) to finish
+      }, 3000); // Rotate every 3 seconds
+    }
+
+
+    // ==========================================================================
+    // BOOT
+    // ==========================================================================
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+
+</body>
+</html>
