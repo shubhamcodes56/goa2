@@ -239,6 +239,7 @@ async def ask(req: AskRequest):
             for raw_line in groq_resp.iter_lines():
                 if raw_line:
                     line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                    print(f"RAW GROQ CHUNK: {line}", flush=True)
                     if line.startswith("data: ") and line != "data: [DONE]":
                         try:
                             data = json.loads(line[6:])
