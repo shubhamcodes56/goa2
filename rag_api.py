@@ -194,16 +194,16 @@ async def ask(req: AskRequest):
                 yield "data: [DONE]\n\n"
                 return
 
-            # LAYER 2: Embedding
-            t0 = time.perf_counter()
-            vector_list = await asyncio.to_thread(get_embedding_sync, req.query)
-            embed_ms = (time.perf_counter() - t0) * 1000
+            # Step 1: Get Embedding (offloaded to thread to avoid blocking event loop)
+            embed_start = time.perf_counter()
+            query_embedding = await asyncio.to_thread(get_embedding_sync, req.query)
+            embed_ms = (time.perf_counter() - embed_start) * 1000
 
             # Qdrant search
             t1 = time.perf_counter()
             result = await qdrant.query_points(
                 collection_name=COLLECTION_NAME,
-                query=vector_list,
+                query=query_embedding,
                 limit=req.top_k,
             )
             retrieval_ms = (time.perf_counter() - t1) * 1000
