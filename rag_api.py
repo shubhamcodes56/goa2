@@ -20,6 +20,8 @@ import traceback
 import hashlib
 from collections import OrderedDict
 from contextlib import asynccontextmanager
+import string
+import random
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse, PlainTextResponse
@@ -176,8 +178,10 @@ async def ask(req: AskRequest):
         qdrant = AsyncQdrantClient(url=QDRANT_CLOUD_URL, api_key=QDRANT_CLOUD_KEY)
 
     async def generate_stream():
-        # Yield an immediate keep-alive with 8KB padding to force ALL proxies to flush the buffer
-        yield f": {'keep-alive ' * 800}\n\n"
+        # Yield an immediate keep-alive with 8KB RANDOM padding to force ALL proxies to flush the buffer
+        # Random data prevents GZIP from compressing the chunk and keeping it inside the buffer
+        random_padding = ''.join(random.choices(string.ascii_letters, k=8192))
+        yield f": {random_padding}\n\n"
         
         # TRICK FOR TTFT (Time To First Token) < 200ms:
         # Yield an empty string token IMMEDIATELY. Voice AIs and latency testers 
